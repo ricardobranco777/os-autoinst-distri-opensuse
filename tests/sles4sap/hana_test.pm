@@ -47,6 +47,9 @@ sub run {
     $output =~ /SAPSYSTEMNAME, Attribute, ([A-Z][A-Z0-9]{2})/m;
     die "sapcontrol: SAP administrator [$sapadmin] does not match with System SID [$1]" if ($1 ne $sid);
 
+    $output = script_output "hdbsql -j -d NDB -u SYSTEM -n localhost:30015 -p Qwerty_123 'SELECT * FROM DUMMY'";
+    die "hdbsql: failed to query the dummy table\n\n$output" unless ($output =~ /1 row selected/);
+
     $output = script_output "sapcontrol -nr 00 -function Stop";
     die "sapcontrol: Stop API failed\n\n$output" unless ($output =~ /Stop[\r\n]+OK/);
 
@@ -70,9 +73,6 @@ sub run {
     $output = script_output $pscmd;
     @olines = split(/\n/, $output);
     die "sapcontrol: failed to start the instance" unless (@olines > 1);
-
-    $output = script_output "hdbsql -j -d NDB -u SYSTEM -n localhost:30015 -p Qwerty_123 'SELECT * FROM DUMMY'";
-    die "hdbsql: failed to query the dummy table\n\n$output" unless ($output =~ /1 row selected/);
 
     # Rollback changes to $testapi::serialdev and close the window
     type_string "exit\n";
