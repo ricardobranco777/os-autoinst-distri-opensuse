@@ -19,7 +19,7 @@
 # Requires: ENV variable MEDIA pointing to installation media, QEMURAM=32768
 # Maintainer: Ricardo Branco <rbranco@suse.de>
 
-use base 'basetest';
+use base 'sles4sap';
 use strict;
 use testapi;
 use utils 'turn_off_gnome_screensaver';
@@ -76,6 +76,8 @@ sub run {
 
     # Don't change this. The needle has this SID.
     my $sid = 'NDB';
+    my $password = 'Qwerty_123';
+    set_var('PASSWORD', $password);
 
     assert_screen 'sap-wizard-hana-system-parameters';
     # SAP SID
@@ -83,9 +85,9 @@ sub run {
     type_string $sid;
     # SAP Master Password
     send_key 'alt-a';
-    type_password 'Qwerty_123';
+    type_password $password;
     send_key 'tab';
-    type_password 'Qwerty_123';
+    type_password $password;
     save_screenshot;
     # Ok
     send_key 'alt-o';
@@ -123,14 +125,11 @@ sub run {
             send_key 'alt-o';
         } elsif (match_has_tag 'sap-wizard-failed') {
             send_key 'tab';
-            save_screenshot;
             send_key 'ret';
         }
         save_screenshot;
-        assert_screen 'generic-desktop', 120;
-        select_console 'root-console';
-        assert_script_run 'tar cf /tmp/logs.tar /var/adm/autoinstall/logs; xz -9v /tmp/logs.tar';
-        upload_logs '/tmp/logs.tar.xz';
+        # Wait for SAP wizard to finish writing logs
+        assert_screen 'generic-desktop', 90;
         die "Failed";
     }
 }
@@ -141,6 +140,16 @@ sub test_flags {
     # 'milestone'      - after this test succeeds, update 'lastgood'
     # 'norollback'     - don't roll back to 'lastgood' snapshot if this fails
     return {fatal => 1};
+}
+
+sub post_fail_hook {
+    my $self = shift;
+    select_console 'root-console';
+
+    assert_script_run 'tar cf /tmp/logs.tar /var/adm/autoinstall/logs; xz -9v /tmp/logs.tar';
+    upload_logs '/tmp/logs.tar.xz';
+    assert_script_run 'save_y2logs /tmp/y2logs.tar.bz2';
+    upload_logs '/tmp/y2logs.tar.bz2';
 }
 
 1;
