@@ -42,13 +42,11 @@ sub run {
 
     x11_start_program('xterm -geometry 160x45+5+5', target_match => 'xterm-susetest');
     turn_off_gnome_screensaver;
-    save_screenshot;
     type_string "killall xterm\n";
 
     assert_screen 'generic-desktop';
     x11_start_program 'yast2 sap-installation-wizard';
     assert_screen 'sap-installation-wizard';
-    save_screenshot;
 
     # Choose nfs://
     send_key 'tab';
@@ -58,19 +56,14 @@ sub run {
     # Next
     send_key 'tab';
     send_key 'alt-n';
-    save_screenshot;
 
     assert_screen 'sap-wizard-copying-media';
-    save_screenshot;
 
     # "Do you use a Supplement/3rd-Party SAP software medium?"
     assert_screen 'sap-wizard-supplement-medium', 3000;
-    save_screenshot;
     # No
     send_key 'alt-n';
-    save_screenshot;
     assert_screen 'sap-wizard-additional-repos';
-    save_screenshot;
     # Next
     send_key 'alt-n';
 
@@ -88,37 +81,29 @@ sub run {
     type_password $password;
     send_key 'tab';
     type_password $password;
-    save_screenshot;
     # Ok
     send_key 'alt-o';
 
     set_var('SAPADM', lc($sid) . 'adm');
 
     assert_screen 'sap-wizard-performing-installation', 60;
-    save_screenshot;
 
     # "Are there more SAP products to be prepared for installation?"
     assert_screen 'sap-wizard-profile-ready', 300;
-    save_screenshot;
     # No
     send_key 'alt-n';
-    save_screenshot;
 
     # "Do you want to continue the installation?"
     # "Your system does not meet the requirements..."
     assert_screen 'sap-wizard-continue-installation';
-    save_screenshot;
     # Yes
     send_key 'alt-y';
-    save_screenshot;
 
     assert_screen 'sap-product-installation';
 
     assert_screen [qw(sap-wizard-installation-summary sap-wizard-finished sap-wizard-failed sap-wizard-error)], 4000;
-    save_screenshot;
     if (match_has_tag 'sap-wizard-installation-summary') {
         send_key 'alt-o';
-        save_screenshot;
         assert_screen 'generic-desktop', 600;
     } else {
         if (match_has_tag 'sap-wizard-error') {
@@ -127,7 +112,6 @@ sub run {
             send_key 'tab';
             send_key 'ret';
         }
-        save_screenshot;
         # Wait for SAP wizard to finish writing logs
         assert_screen 'generic-desktop', 90;
         die "Failed";
