@@ -52,16 +52,16 @@ sub run {
     send_key_until_needlematch 'sap-wizard-proto-' . $proto . '-selected', 'down';
     send_key 'alt-p';
     type_string_slow "$path", wait_still_screen => 1;
-    # Next (XXX)
-    mouse_set 825, 636;
-    mouse_click;
+    # Next
+    send_key 'tab';
+    send_key 'alt-n';
 
     assert_screen 'sap-wizard-copying-media';
 
     # "Prepare SAP installation medium"
     assert_screen 'sap-wizard-installation-medium', 3000;
-    # Next (XXX)
-    mouse_click;
+    # Next
+    send_key 'alt-n';
     # "Are there more SAP product mediums to be prepared?"
     assert_screen 'sap-wizard-more-product-mediums', 3000;
     # No
