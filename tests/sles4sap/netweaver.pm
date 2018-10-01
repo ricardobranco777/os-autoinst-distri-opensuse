@@ -16,7 +16,7 @@
 # with this program; if not, see <http://www.gnu.org/licenses/>.
 
 # Summary: Checks NetWeaver Wizard installation on Gnome
-# Requires: ENV variable MEDIA pointing to installation media
+# Requires: ENV variable MEDIA pointing to installation media, HDDSIZEGB >= 256GB
 # Maintainer: Ricardo Branco <rbranco@suse.de>
 
 use base 'sles4sap';
@@ -52,14 +52,33 @@ sub run {
     send_key_until_needlematch 'sap-wizard-proto-' . $proto . '-selected', 'down';
     send_key 'alt-p';
     type_string_slow "$path", wait_still_screen => 1;
-    # Next
-    send_key 'tab';
-    send_key 'alt-n';
+    # Next (XXX)
+    mouse_set 825, 636;
+    mouse_click;
 
     assert_screen 'sap-wizard-copying-media';
 
+    # "Prepare SAP installation medium"
+    assert_screen 'sap-wizard-installation-medium', 3000;
+    # Next (XXX)
+    mouse_click;
+    # "Are there more SAP product mediums to be prepared?"
+    assert_screen 'sap-wizard-more-product-mediums', 3000;
+    # No
+    send_key 'alt-n';
+    # "Choose the Installation Type!"
+    assert_screen 'sap-wizard-installation-type';
+    # SAP Standard System
+    send_key 'alt-t';
+    # Next
+    send_key 'alt-n';
+    # "Choose a Product"
+    assert_screen 'sap-wizard-choose-product';
+    # "Application Server ABAP SAP" (pre-chosen)
+    # Next
+    send_key 'alt-n';
     # "Do you use a Supplement/3rd-Party SAP software medium?"
-    assert_screen 'sap-wizard-supplement-medium', 3000;
+    assert_screen 'sap-wizard-supplement-medium';
     # No
     send_key 'alt-n';
     assert_screen 'sap-wizard-additional-repos';
@@ -71,7 +90,7 @@ sub run {
     my $password = 'Qwerty_123';
     set_var('PASSWORD', $password);
 
-    assert_screen 'sap-wizard-hana-system-parameters';
+    assert_screen 'sap-wizard-system-parameters';
     # SAP SID
     send_key 'alt-s';
     type_string $sid;
