@@ -20,8 +20,7 @@ sub run {
     my ($self) = @_;
     my ($proto, $path) = split m|://|, get_required_var('MEDIA');
 
-    die "Currently supported protocols are nfs and smb"
-      unless ($proto eq 'nfs' or $proto eq 'smb');
+    die "Currently supported protocols are nfs and smb" unless $proto =~ /^(nfs|smb)$/;
 
     # Add host's IP to /etc/hosts
     select_console 'root-console';
