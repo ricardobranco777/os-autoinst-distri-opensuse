@@ -96,8 +96,7 @@ sub post_fail_hook {
 
     assert_script_run 'tar cf /tmp/logs.tar /var/adm/autoinstall/logs; xz -9v /tmp/logs.tar';
     upload_logs '/tmp/logs.tar.xz';
-    save_upload_y2logs;
-    upload_logs '/tmp/y2logs.tar.bz2';
+    save_upload_y2logs();
     $self->SUPER::post_fail_hook();
 }
 
