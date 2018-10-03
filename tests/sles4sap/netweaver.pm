@@ -42,38 +42,31 @@ sub run {
     send_key_until_needlematch 'sap-wizard-proto-' . $proto . '-selected', 'down';
     send_key 'alt-p';
     type_string_slow "$path", wait_still_screen => 1;
-    # Next
     send_key 'tab';
-    send_key 'alt-n';
+    send_key $cmd{next};
 
     assert_screen 'sap-wizard-copying-media';
 
     # "Prepare SAP installation medium"
     assert_screen 'sap-wizard-installation-medium', 3000;
-    # Next
-    send_key 'alt-n';
+    send_key $cmd{next};
     # "Are there more SAP product mediums to be prepared?"
     assert_screen 'sap-wizard-more-product-mediums', 3000;
-    # No
-    send_key 'alt-n';
+    send_key $cmd{next};
     # "Choose the Installation Type!"
     assert_screen 'sap-wizard-installation-type';
     # SAP Standard System
     send_key 'alt-t';
-    # Next
-    send_key 'alt-n';
+    send_key $cmd{next};
     # "Choose a Product"
     assert_screen 'sap-wizard-choose-product';
     # "Application Server ABAP SAP" (pre-chosen)
-    # Next
-    send_key 'alt-n';
+    send_key $cmd{next};
     # "Do you use a Supplement/3rd-Party SAP software medium?"
     assert_screen 'sap-wizard-supplement-medium';
-    # No
-    send_key 'alt-n';
+    send_key $cmd{next};
     assert_screen 'sap-wizard-additional-repos';
-    # Next
-    send_key 'alt-n';
+    send_key $cmd{next};
 
     # Don't change this. The needle has this SID.
     my $sid = 'NDB';
@@ -89,8 +82,7 @@ sub run {
     type_password $password;
     wait_screen_change { send_key 'tab' };
     type_password $password;
-    # Ok
-    wait_screen_change { send_key 'alt-o' };
+    wait_screen_change { send_key $cmd{ok} };
 
     set_var('SAPADM', lc($sid) . 'adm');
 
@@ -98,8 +90,7 @@ sub run {
 
     # "Are there more SAP products to be prepared for installation?"
     assert_screen 'sap-wizard-profile-ready', 300;
-    # No
-    send_key 'alt-n';
+    send_key $cmd{next};
 
     # "Do you want to continue the installation?"
     # "Your system does not meet the requirements..."
@@ -111,11 +102,11 @@ sub run {
 
     assert_screen [qw(sap-wizard-installation-summary sap-wizard-finished sap-wizard-failed sap-wizard-error)], 4000;
     if (match_has_tag 'sap-wizard-installation-summary') {
-        send_key 'alt-o';
+        send_key $cmd{ok};
         assert_screen 'generic-desktop', 600;
     } else {
         if (match_has_tag 'sap-wizard-error') {
-            send_key 'alt-o';
+            send_key $cmd{ok};
         } elsif (match_has_tag 'sap-wizard-failed') {
             send_key 'tab';
             send_key 'ret';
