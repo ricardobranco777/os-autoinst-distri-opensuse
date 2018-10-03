@@ -38,7 +38,6 @@ sub run {
     type_string "killall xterm\n";
     assert_screen 'generic-desktop';
     x11_start_program('yast2 sap-installation-wizard', target_match => 'sap-installation-wizard');
-    # Choose nfs://
     send_key 'tab';
     send_key_until_needlematch 'sap-wizard-proto-' . $proto . '-selected', 'down';
     send_key 'alt-p';
@@ -46,44 +45,34 @@ sub run {
     send_key 'tab';
     send_key $cmd{next};
     assert_screen 'sap-wizard-copying-media';
-    # "Prepare SAP installation medium"
     assert_screen 'sap-wizard-installation-medium', 3000;
     send_key $cmd{next};
-    # "Are there more SAP product mediums to be prepared?"
     assert_screen 'sap-wizard-more-product-mediums', 3000;
     send_key $cmd{next};
-    # "Choose the Installation Type!"
     assert_screen 'sap-wizard-installation-type';
     # SAP Standard System
     send_key 'alt-t';
     send_key $cmd{next};
-    # "Choose a Product"
     assert_screen 'sap-wizard-choose-product';
     # "Application Server ABAP SAP" (pre-chosen)
     send_key $cmd{next};
-    # "Do you use a Supplement/3rd-Party SAP software medium?"
     assert_screen 'sap-wizard-supplement-medium';
     send_key $cmd{next};
     assert_screen 'sap-wizard-additional-repos';
     send_key $cmd{next};
     assert_screen 'sap-wizard-system-parameters';
-    # SAP SID
+    # SAP SID / Password
     send_key 'alt-s';
     type_string $sid;
-    # SAP Master Password
     wait_screen_change { send_key 'alt-a' };
     type_password $password;
     wait_screen_change { send_key 'tab' };
     type_password $password;
     wait_screen_change { send_key $cmd{ok} };
     assert_screen 'sap-wizard-performing-installation', 60;
-    # "Are there more SAP products to be prepared for installation?"
-    assert_screen 'sap-wizard-profile-ready', 300;
+    assert_screen 'sap-wizard-profile-ready',           300;
     send_key $cmd{next};
-    # "Do you want to continue the installation?"
-    # "Your system does not meet the requirements..."
     assert_screen 'sap-wizard-continue-installation';
-    # Yes
     send_key 'alt-y';
     assert_screen 'sap-product-installation';
     assert_screen [qw(sap-wizard-installation-summary sap-wizard-finished sap-wizard-failed sap-wizard-error)], 4000;
