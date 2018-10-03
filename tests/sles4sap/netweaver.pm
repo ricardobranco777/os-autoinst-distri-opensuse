@@ -7,8 +7,7 @@
 # notice and this notice are preserved.  This file is offered as-is,
 # without any warranty.
 
-# Summary: Checks NetWeaver Wizard installation on Gnome
-# Requires: ENV variable MEDIA pointing to installation media, HDDSIZEGB >= 256GB
+# Summary: Install NetWeaver with SAP Installation Wizard
 # Maintainer: Ricardo Branco <rbranco@suse.de>
 
 use base 'sles4sap';
