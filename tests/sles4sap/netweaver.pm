@@ -27,7 +27,7 @@ sub run {
     assert_script_run 'echo $(ip -4 addr show dev eth0 | sed -rne "/inet/s/[[:blank:]]*inet ([0-9\.]*).*/\1/p") $(hostname) >> /etc/hosts';
     # Resize root filesystem
     assert_script_run 'lvextend -l +$(pvdisplay | sed -rne "/Free PE/s/.* ([0-9]+)$/\1/p") /dev/system/root ; btrfs filesystem resize max /';
-    select_console 'x11', await_console => 0;
+    select_console 'x11';
 
     x11_start_program('xterm -geometry 160x45+5+5', target_match => 'xterm-susetest');
     turn_off_gnome_screensaver;
