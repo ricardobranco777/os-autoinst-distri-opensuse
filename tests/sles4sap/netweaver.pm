@@ -1,6 +1,6 @@
 # SUSE's SLES4SAP openQA tests
 #
-# Copyright (C) 2018 SUSE LLC
+# Copyright (C) 2019 SUSE LLC
 #
 # Copying and distribution of this file, with or without modification,
 # are permitted in any medium without royalty provided the copyright
@@ -29,13 +29,15 @@ sub run {
 
     # Add host's IP to /etc/hosts
     select_console 'root-console';
-    assert_script_run 'echo $(ip -4 addr show dev eth0 | sed -rne "/inet/s/[[:blank:]]*inet ([0-9\.]*).*/\1/p") $(hostname) >> /etc/hosts';
+    assert_script_run 'echo $(ip -4 addr show dev eth0 | sed -rne "/inet/s/[[:blank:]]*inet ([0-9\.]*).*/\1/p") $(hostname).local $(hostname) >> /etc/hosts';
     if (is_sle('>=15')) {
         my $arch       = get_required_var('ARCH');
         my $os_version = script_output('sed -rn "s/^VERSION_ID=\"(.*)\"/\1/p" /etc/os-release');
         assert_script_run "SUSEConnect -p sle-module-legacy/$os_version/$arch";
         zypper_call('in libopenssl1_0_0');
     }
+    # Installation scripts use netstat
+    zypper_call('in net-tools-deprecated');
     # Resize root filesystem
     assert_script_run 'lvextend -l +$(pvdisplay | sed -rne "/Free PE/s/.* ([0-9]+)$/\1/p") /dev/system/root ; btrfs filesystem resize max /; df -h';
     select_console 'x11';
@@ -50,25 +52,45 @@ sub run {
     send_key_until_needlematch 'sap-wizard-proto-' . $proto . '-selected', 'down';
     send_key 'alt-p';
     type_string_slow "$path", wait_still_screen => 1;
+    save_screenshot;
     send_key 'tab';
     send_key $cmd{next};
     assert_screen 'sap-wizard-copying-media';
     assert_screen 'sap-wizard-installation-medium', 3000;
+    if (0) {
+    send_key 'alt-p';
+    type_string_slow "nfs://saphq.suse.de:/Public/NW75/x86_64/sap_kernel";
+    }
     send_key $cmd{next};
     assert_screen 'sap-wizard-more-product-mediums', 3000;
+    if (0) {
+    send_key 'alt-y';
+    assert_screen 'sap-wizard-installation-medium', 200;
+    send_key 'alt-p';
+    type_string_slow "nfs://saphq.suse.de:/Public/NW752";
+    }
     send_key $cmd{next};
     assert_screen 'sap-wizard-installation-type', 60;
-    # SAP Standard System
-    send_key 'alt-t';
+    save_screenshot;
+    # SAP Standalone Engines
+    send_key 'alt-l';
+    save_screenshot;
     send_key $cmd{next};
     assert_screen 'sap-wizard-choose-product', 500;
-    # "Application Server ABAP SAP" (pre-chosen)
+    #assert_and_dclick 'sap-wizard-choose-product-gw-sap-nw75', timeout => 500;
+    send_key 'down';
+    send_key 'down';
+    send_key 'down';
+    send_key 'down';
+    send_key 'down';
+    save_screenshot;
     send_key $cmd{next};
     assert_screen 'sap-wizard-supplement-medium';
     send_key $cmd{next};
     assert_screen 'sap-wizard-additional-repos';
     send_key $cmd{next};
-    assert_screen 'sap-wizard-system-parameters';
+    if (0) {
+    assert_screen 'sap-wizard-system-parameters', 60;
     # SAP SID / Password
     send_key 'alt-s';
     type_string $sid;
@@ -77,8 +99,9 @@ sub run {
     wait_screen_change { send_key 'tab' };
     type_password $password;
     wait_screen_change { send_key $cmd{ok} };
-    assert_screen 'sap-wizard-performing-installation', 60;
-    assert_screen 'sap-wizard-profile-ready',           100;
+    }
+    #assert_screen 'sap-wizard-performing-installation', 60;
+    assert_screen 'sap-wizard-profile-ready', 200;
     send_key $cmd{next};
     assert_screen 'sap-product-installation';
     assert_screen [qw(sap-wizard-installation-summary sap-wizard-finished sap-wizard-failed sap-wizard-error sap-wizard-crashed)], 4000;
