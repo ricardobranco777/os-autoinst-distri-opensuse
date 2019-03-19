@@ -13,9 +13,9 @@
 use base 'sles4sap';
 use strict;
 use testapi;
-use utils 'turn_off_gnome_screensaver';
 use utils qw(type_string_slow zypper_call);
 use version_utils 'is_sle';
+use x11utils 'turn_off_gnome_screensaver';
 
 sub run {
     my ($self) = @_;
@@ -37,8 +37,10 @@ sub run {
         zypper_call('in libopenssl1_0_0');
     }
     # Resize root filesystem
-    assert_script_run 'lvextend -l +$(pvdisplay | sed -rne "/Free PE/s/.* ([0-9]+)$/\1/p") /dev/system/root ; btrfs filesystem resize max /';
+    assert_script_run 'lvextend -l +$(pvdisplay | sed -rne "/Free PE/s/.* ([0-9]+)$/\1/p") /dev/system/root ; btrfs filesystem resize max /; df -h';
     select_console 'x11';
+    mouse_hide;
+
     x11_start_program('xterm');
     turn_off_gnome_screensaver;
     type_string "killall xterm\n";
@@ -90,6 +92,7 @@ sub run {
         check_screen 'generic-desktop', 90;
         die "Failed";
     }
+    assert_script_run "dh -h";
 }
 
 sub test_flags {
