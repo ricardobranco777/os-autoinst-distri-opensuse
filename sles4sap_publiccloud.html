@@ -163,8 +163,24 @@ and the IBS Mirror. Function is generic over all the Cloud Providers</code></pre
 
 <h2 id="create_ansible_playbook_list">create_ansible_playbook_list</h2>
 
-<pre><code>Detects HANA/HA scenario from openQA variables and returns a list of ansible playbooks to include
+<pre><code>Detects HANA/HA scenario from function arguments and returns a list of ansible playbooks to include
 in the &quot;ansible: create:&quot; section of config.yaml file.</code></pre>
+
+<dl>
+
+<dt id="HA_ENABLED---Enable-the-installation-of-HANA-and-the-cluster-configuration"><b>HA_ENABLED</b> - Enable the installation of HANA and the cluster configuration</dt>
+<dd>
+
+</dd>
+<dt id="REGISTRATION---select-registration-mode-possible-values-are-registercloudguest-default-suseconnect-noreg-QESAP_SCC_NO_REGISTER-skips-scc-registration-via-ansible"><b>REGISTRATION</b> - select registration mode, possible values are * registercloudguest (default) * suseconnect * noreg &quot;QESAP_SCC_NO_REGISTER&quot; skips scc registration via ansible</dt>
+<dd>
+
+</dd>
+<dt id="FENCING---select-fencing-mechanism"><b>FENCING</b> - select fencing mechanism</dt>
+<dd>
+
+</dd>
+</dl>
 
 <h3 id="azure_fencing_agents_playbook_args">azure_fencing_agents_playbook_args</h3>
 
@@ -174,7 +190,7 @@ in the &quot;ansible: create:&quot; section of config.yaml file.</code></pre>
 );
 
 Collects data and creates string of arguments that can be supplied to playbook.
-spn_application_id - application ID that allows API access for stonith device
+spn_application_id - application ID that allows API access for STONITH device
 spn_application_password - password provided for application ID above</code></pre>
 
 <h2 id="create_hana_vars_section">create_hana_vars_section</h2>
@@ -206,7 +222,11 @@ Returns 1 if the output of the hana database is online, 0 means that hana databa
 
 <dl>
 
-<dt id="TIMEOUT---default-900-item-TOTAL_CONSECUTIVE_PASSES---default-5"><b>TIMEOUT</b> - default 900 =item <b>TOTAL_CONSECUTIVE_PASSES</b> - default 5</dt>
+<dt id="TIMEOUT---default-900"><b>TIMEOUT</b> - default 900</dt>
+<dd>
+
+</dd>
+<dt id="TOTAL_CONSECUTIVE_PASSES---default-5"><b>TOTAL_CONSECUTIVE_PASSES</b> - default 5</dt>
 <dd>
 
 </dd>
