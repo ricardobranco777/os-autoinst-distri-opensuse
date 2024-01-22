@@ -63,6 +63,8 @@ sub run {
     parse_extra_log(IPA => $img_proof->{results});
     assert_script_run('rm -rf img_proof_results');
 
+    upload_logs('/var/tmp/report.html', failok => 1);
+
     # fail, if at least one test failed
     if ($img_proof->{fail} > 0) {
 
