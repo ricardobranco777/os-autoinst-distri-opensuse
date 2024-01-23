@@ -38,7 +38,7 @@ sub run {
         # https://bugzilla.suse.com/show_bug.cgi?id=1219100
         $instance->ssh_assert_script_run('sudo chmod 600 /etc/ssh/sshd_config');
         # Avoid "pam_apparmor(sudo:session): Unknown error occurred changing to root hat: Operation not permitted"
-        $instance->ssh_assert_script_run('sudo sed -i /pam_apparmor.so/d /etc/pam.d/*');
+        $instance->ssh_assert_script_run('sudo sed -i "s/pam_apparmor\.so/& order=user,group,default/" /etc/pam.d/*')
     }
 
     if ($tests eq "default") {
