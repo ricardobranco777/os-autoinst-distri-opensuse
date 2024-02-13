@@ -213,7 +213,7 @@ sub run_img_proof {
     $cmd .= $args{tests};
     record_info("img-proof cmd", $cmd);
 
-    my $output = script_output($cmd . ' 2>&1', $args{timeout}, proceed_on_failure => 1);
+    my $output = script_output($cmd . ' 2>&1', $args{timeout}, proceed_on_failure => 1, timeout => 72000);
     record_info("img-proof output", $output);
     my $img_proof = $self->parse_img_proof_output($output);
     record_info("img-proof results", Dumper($img_proof));
