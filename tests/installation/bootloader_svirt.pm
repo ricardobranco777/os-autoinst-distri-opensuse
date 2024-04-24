@@ -1,6 +1,6 @@
 # SUSE's openQA tests
 #
-# Copyright 2016-2023 SUSE LLC
+# Copyright 2016-2024 SUSE LLC
 # SPDX-License-Identifier: FSFAP
 
 # Summary: Initialize virtual machine (Xen, KVM, VMware)... on a (remote)
@@ -142,15 +142,7 @@ sub run {
             my $hdd = basename($full_hdd);
             my $hddpath = search_image_on_svirt_host($svirt, $hdd, $hdddir);
             if ($hddpath =~ m/vmdk\.xz$/) {
-                my $nfs_ro = $hddpath;
                 $hddpath = "$vmware_openqa_datastore/$hdd" =~ s/vmdk\.xz/vmdk/r;
-                # do nothing if the image is already unpacked in datastore
-                if ($svirt->run_cmd("test -e $hddpath", domain => 'sshVMwareServer')) {
-                    my $ret = $svirt->run_cmd("cp $nfs_ro $vmware_openqa_datastore", domain => 'sshVMwareServer');
-                    die "Image copy to datastore failed!\n" if $ret;
-                    $ret = $svirt->run_cmd("xz --decompress --keep --verbose $vmware_openqa_datastore/$hdd", domain => 'sshVMwareServer');
-                    die "Image decompress in datastore failed!\n" if $ret;
-                }
             }
             $svirt->add_disk(
                 {
