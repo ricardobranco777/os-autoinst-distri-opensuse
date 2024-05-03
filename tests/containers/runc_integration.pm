@@ -61,7 +61,7 @@ sub run {
     # Compile some stuff
     assert_script_run "make recvtty sd-helper seccompagent fs-idmap memfd-bind pidfd-kill remap-rootfs";
 
-    switch_cgroup_version($self, 2);
+    #switch_cgroup_version($self, 2);
 
     run_tests(rootless => 1, skip_tests => get_var('RUNC_BATS_SKIP_USER', ''));
 

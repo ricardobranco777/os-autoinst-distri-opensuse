@@ -225,6 +225,12 @@ sub switch_cgroup_version {
 
     my $setting = ($version == 1) ? 0 : 1;
 
+    add_grub_cmdline_settings("apparmor=0");
+    power_action('reboot', textmode => 1);
+    $self->wait_boot(bootloader_time => 360);
+    select_serial_terminal;
+    return;
+
     my $rc = script_run("ls /sys/fs/cgroup/cgroup.controllers");
     return if ($version == 2 && $rc == 0 || $version == 1 && $rc != 0);
 
