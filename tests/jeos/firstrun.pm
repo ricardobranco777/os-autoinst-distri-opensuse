@@ -104,6 +104,10 @@ sub verify_bsc {
     }
 }
 
+sub test_ssh_key_enroll {
+    return;
+}
+
 sub run {
     my ($self) = @_;
     my $lang = is_sle('15+') ? 'en_US' : get_var('JEOSINSTLANG', 'en_US');
@@ -200,7 +204,12 @@ sub run {
     # Skip ssh key enrollment (for now)
     unless (is_sle || is_sle_micro || is_leap) {
         assert_screen 'jeos-ssh-enroll-or-not';
-        send_key 'n';
+        if (get_var('TEST_SSH_KEY_ENROLL')) {
+            send_key 'y';
+            test_ssh_key_enroll;
+        } else {
+            send_key 'n';
+        }
     }
 
     if (is_sle || is_sle_micro) {
