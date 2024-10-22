@@ -16,6 +16,7 @@ use version_utils qw(is_sle is_sle_micro is_tumbleweed is_microos);
 use containers::common;
 use Utils::Architectures qw(is_x86_64 is_aarch64);
 use containers::bats qw(install_bats install_htpasswd install_ncat patch_logfile remove_mounts_conf switch_to_user delegate_controllers enable_modules);
+use Utils::Systemd qw(systemctl);
 
 my $test_dir = "/var/tmp";
 my $podman_version = "";
@@ -84,6 +85,12 @@ sub run {
 
     record_info("podman info", script_output("podman info"));
     record_info("podman package version", script_output("rpm -q podman"));
+
+    # Generate SSH key to test podman-image-scp(1)
+    assert_script_run 'ssh-keygen -t rsa -N "" -C podman -f ~/.ssh/id_rsa';
+    assert_script_run "cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys";
+    assert_script_run "echo PermitRootLogin prohibit-password > /etc/ssh/sshd_config.d/root.conf";
+    systemctl "enable --now sshd";
 
     switch_to_user;
 
