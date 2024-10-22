@@ -37,6 +37,7 @@ sub run_tests {
 
     assert_script_run "echo $log_file .. > $log_file";
     background_script_run "podman system service --timeout=0" if ($remote);
+    assert_script_run "sed -i 's/scp -q/scp/' test/system/120-load.bats";
     script_run "env BATS_TMPDIR=/var/tmp PODMAN=/usr/bin/podman QUADLET=$quadlet hack/bats $args | tee -a $log_file", 8000;
     patch_logfile($log_file, @skip_tests);
     parse_extra_log(TAP => $log_file);
