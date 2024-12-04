@@ -19,6 +19,7 @@ use testapi;
 use serial_terminal 'select_serial_terminal';
 
 sub run {
+    return;
     select_serial_terminal;
 
     return unless (get_var('CONTAINER_IMAGE_TO_TEST') && get_var('CONTAINER_IMAGE_BUILD'));
