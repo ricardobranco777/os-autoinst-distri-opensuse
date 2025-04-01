@@ -155,6 +155,7 @@ sub load_host_tests_podman {
     load_secret_tests($run_args);
     load_volume_tests($run_args);
     load_compose_tests($run_args);
+    loadtest 'containers/runc', run_args => $run_args, name => $run_args->{runtime} . "_runc";
     loadtest('containers/seccomp', run_args => $run_args, name => $run_args->{runtime} . "_seccomp") unless is_sle('<15');
     loadtest('containers/isolation', run_args => $run_args, name => $run_args->{runtime} . "_isolation") unless (is_public_cloud || is_transactional);
 }
@@ -169,12 +170,8 @@ sub load_host_tests_docker {
     load_container_engine_privileged_mode($run_args);
     # Firewall is not installed in Public Cloud, JeOS OpenStack and MicroOS but it is in SLE Micro
     load_firewall_test($run_args);
-    unless (is_sle("<=15") && is_aarch64) {
-        # these 2 packages are not avaiable for <=15 (aarch64 only)
-        # zypper-docker is only available on SLES < 15-SP6
-        loadtest 'containers/zypper_docker' if (is_sle("<15-SP6") || is_leap("<15.6"));
-        loadtest 'containers/docker_runc';
-    }
+    loadtest 'containers/zypper_docker' if (is_sle("<15-SP6"));
+    loadtest 'containers/runc', run_args => $run_args, name => $run_args->{runtime} . "_runc";
     unless (check_var('BETA', 1) || is_sle_micro || is_microos || is_leap_micro || is_staging) {
         # These tests use packages from Package Hub, so they are applicable
         # to maintenance jobs or new products after Beta release

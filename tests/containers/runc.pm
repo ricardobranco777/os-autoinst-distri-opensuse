@@ -1,9 +1,9 @@
 # SUSE's openQA tests
 #
-# Copyright 2017-2024 SUSE LLC
+# Copyright 2017-2025 SUSE LLC
 # SPDX-License-Identifier: FSFAP
 
-# Package: runc docker-runc
+# Package: runc
 # Summary: Test docker-runc and runc installation, and extended usage
 #    Cover the following aspects of docker-runc and runc respectively:
 #      * package can be installed
@@ -16,24 +16,24 @@ use Mojo::Base 'containers::basetest';
 use testapi;
 use serial_terminal 'select_serial_terminal';
 use utils;
-use version_utils qw(is_leap is_sle get_os_release is_transactional);
+use version_utils qw(is_leap is_sle is_transactional);
 use containers::common;
 
 sub run {
-    my ($self) = @_;
+    my ($self, $args) = @_;
+    my $runtime = $args->{runtime};
     select_serial_terminal;
 
-    my ($running_version, $sp, $host_distri) = get_os_release;
     my $runc = "runc";    # runc executable
 
     # Runtime setup and installation
     record_info 'Test #1', 'Installation and test preparation';
     install_packages($runc);
     record_info("$runc", script_output("$runc -v"));
-    # Create root filesystem for the test container. We need docker for this preparation step.
+    # Create root filesystem for the test container. We need the runtime for this preparation step.
     assert_script_run('rm -rf rootfs && mkdir rootfs');
     my $image = "registry.opensuse.org/opensuse/busybox";
-    assert_script_run('docker export $(docker create ' . $image . ') | tar -C rootfs -xvf -', fail_message => "Cannot export rootfs, see bsc#1152508");
+    assert_script_run("$runtime export \$($runtime create $image) | tar -C rootfs -xvf -', fail_message => "Cannot export rootfs, see bsc#1152508");
 
     # create the OCI specification file and verify that the template has been created
     record_info 'Test #2', 'Test: OCI Specification';
