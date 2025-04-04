@@ -43,12 +43,15 @@ sub run_tests {
     );
     my $env = join " ", map { "$_=$_env{$_}" } sort keys %_env;
 
+    my @skip_tests = split(/\s+/, get_required_var('PODMAN_BATS_SKIP') . " " . $skip_tests);
+    foreach my $test (@skip_tests) {
+        script_run("rm -f test/system/$test.bats");
+    }
+
     assert_script_run "echo $log_file .. > $log_file";
     background_script_run "podman system service --timeout=0" if ($remote);
     my $ret = script_run "env $env hack/bats $args | tee -a $log_file", 8000;
     script_run 'kill %1' if ($remote);
-
-    my @skip_tests = split(/\s+/, get_required_var('PODMAN_BATS_SKIP') . " " . $skip_tests);
 
     # Unconditionally ignore these flaky subtests
     my @must_skip = (
