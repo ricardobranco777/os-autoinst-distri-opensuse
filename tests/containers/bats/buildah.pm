@@ -10,10 +10,10 @@
 use Mojo::Base 'containers::basetest';
 use testapi;
 use serial_terminal qw(select_serial_terminal);
-use utils qw(script_retry);
+use utils qw(script_retry systemctl);
 use containers::common;
 use containers::bats;
-use version_utils qw(is_sle);
+use version_utils qw(is_sle is_tumbleweed);
 
 my $test_dir = "/var/tmp/buildah-tests";
 my $oci_runtime = "";
@@ -81,6 +81,25 @@ sub run {
 
     $oci_runtime = install_oci_runtime;
     $oci_runtime = script_output "command -v $oci_runtime";
+
+    systemctl "enable --now docker";
+    assert_script_run "usermod -aG docker $testapi::username";
+
+    # Needed to avoid:
+    # WARNING: COMMAND_FAILED: '/sbin/iptables -t nat -F DOCKER' failed: iptables: No chain/target/match by that name.
+    # See https://bugzilla.suse.com/show_bug.cgi?id=1196801
+    systemctl "restart firewalld";
+    systemctl "status firewalld";
+
+    # Running podman as root with docker installed may be problematic as netavark uses nftables
+    # while docker still uses iptables.
+    # Use workaround suggested in:
+    # - https://fedoraproject.org/wiki/Changes/NetavarkNftablesDefault#Known_Issue_with_docker
+    # - https://docs.docker.com/engine/network/packet-filtering-firewalls/#docker-on-a-router
+    if (script_run("iptables -L -v | grep -q DOCKER") == 0) {
+        script_run "iptables -I DOCKER-USER -j ACCEPT";
+        script_run "ip6tables -I DOCKER-USER -j ACCEPT";
+    }
 
     $self->bats_setup;
 
