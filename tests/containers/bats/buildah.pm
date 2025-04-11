@@ -72,17 +72,12 @@ sub run {
     my ($self) = @_;
     select_serial_terminal;
 
-    install_bats;
-    enable_modules if is_sle;
-
-    # Install tests dependencies
     my @pkgs = qw(buildah docker git-core git-daemon glibc-devel-static go jq libgpgme-devel libseccomp-devel make openssl podman selinux-tools);
-    install_packages(@pkgs);
+
+    $self->bats_setup(@pkgs);
 
     $oci_runtime = install_oci_runtime;
     $oci_runtime = script_output "command -v $oci_runtime";
-
-    $self->bats_setup;
 
     record_info("buildah version", script_output("buildah --version"));
     record_info("buildah info", script_output("buildah info"));

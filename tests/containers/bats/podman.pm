@@ -82,10 +82,6 @@ sub run {
     my ($self) = @_;
     select_serial_terminal;
 
-    install_bats;
-    enable_modules if is_sle;
-
-    # Install tests dependencies
     my @pkgs = qw(aardvark-dns apache2-utils buildah catatonit git-core glibc-devel-static go gpg2 iptables jq libcriu2 libgpgme-devel
       libseccomp-devel make netavark openssl podman podman-remote python3-PyYAML skopeo socat sudo systemd-container);
     push @pkgs, qw(criu) if is_tumbleweed;
@@ -95,12 +91,12 @@ sub run {
     } elsif (is_aarch64) {
         push @pkgs, "qemu-arm";
     }
-    install_packages(@pkgs);
+
+    $self->bats_setup(@pkgs);
+
     install_ncat;
 
     $oci_runtime = install_oci_runtime;
-
-    $self->bats_setup;
 
     assert_script_run "podman system reset -f";
     assert_script_run "modprobe ip6_tables";

@@ -24,7 +24,7 @@ use Utils::Logging 'save_and_upload_log';
 use bootloader_setup 'add_grub_cmdline_settings';
 use power_action_utils 'power_action';
 use List::MoreUtils qw(uniq);
-use containers::common qw(install_packages);
+use containers::common;
 
 our @EXPORT = qw(
   bats_post_hook
@@ -169,8 +169,15 @@ EOF
 }
 
 sub bats_setup {
-    my $self = shift;
+    my ($self, @pkgs) = @_;
     my $reboot_needed = 0;
+
+    install_bats;
+
+    enable_modules if is_sle;
+
+    # Install tests dependencies
+    install_packages(@pkgs);
 
     delegate_controllers;
 
