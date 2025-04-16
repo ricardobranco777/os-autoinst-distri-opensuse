@@ -182,10 +182,8 @@ sub load_host_tests_docker {
         # PackageHub is not available in SLE Micro | MicroOS
         loadtest 'containers/registry' if (is_x86_64 || is_sle('>=15-sp4'));
     }
-    if (is_tumbleweed || is_microos) {
-        loadtest 'containers/buildx';
-        loadtest 'containers/rootless_docker';
-    }
+    loadtest 'containers/buildx' if (is_tumbleweed || is_sle('>=16.0'));
+    loadtest 'containers/rootless_docker' if (is_tumbleweed);
     # Skip this test on docker-stable due to https://bugzilla.opensuse.org/show_bug.cgi?id=1239596
     unless (is_transactional || is_public_cloud || is_sle('<15-SP4') || check_var("CONTAINERS_DOCKER_FLAVOUR", "stable")) {
         loadtest('containers/isolation', run_args => $run_args, name => $run_args->{runtime} . "_isolation");

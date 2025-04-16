@@ -16,6 +16,7 @@ use testapi;
 use serial_terminal qw(select_serial_terminal);
 use utils;
 use containers::common qw(install_docker_when_needed install_packages);
+use version_utils qw(is_sle);
 
 my $test_image = "test_buildx";
 my $test_container = "test_buildx";
@@ -31,6 +32,8 @@ sub run {
     my $docker_info = script_output("docker info");
     record_info('Docker info post-install', $docker_info);
     die "docker-buildx not in plugins list" if ($docker_info !~ /plugins\/docker-buildx/);
+
+    assert_script_run("echo 0 > /etc/docker/suse-secrets-enable") if is_sle;
 
     assert_script_run('echo -e "FROM busybox\nEXPOSE 5000" > Dockerfile');
     # NOTE: At some point "buildx" will be dropped
