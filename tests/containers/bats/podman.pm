@@ -89,7 +89,7 @@ sub run {
 
     # Patch tests
     assert_script_run "sed -i 's/^PODMAN_RUNTIME=/&$oci_runtime/' test/system/helpers.bash";
-    assert_script_run "rm -f contrib/systemd/system/podman-kube@.service.in";
+    assert_script_run "rm -f contrib/systemd/system/podman-kube@.service.in" unless (is_tumbleweed);
     # This test is flaky and will fail if system is "full"
     assert_script_run "rm -f test/system/320-system-df.bats";
 
