@@ -20,7 +20,6 @@ use version_utils qw(is_sle is_tumbleweed);
 use serial_terminal qw(select_user_serial_terminal select_serial_terminal);
 use registration qw(add_suseconnect_product get_addon_fullname);
 use Utils::Architectures 'is_aarch64';
-use Utils::Logging 'save_and_upload_log';
 use bootloader_setup 'add_grub_cmdline_settings';
 use power_action_utils 'power_action';
 use List::MoreUtils qw(uniq);
@@ -305,6 +304,34 @@ sub bats_post_hook {
     upload_logs('/tmp/commands.txt');
 }
 
+# Reimplement testapi::parse_extra_log in our own way
+sub bats_parse_log {
+    my $file = shift;
+
+    $file = upload_logs($file);
+    my @tests;
+
+    local @INC = ($ENV{OPENQA_LIBPATH} // testapi::OPENQA_LIBPATH, @INC);
+    eval {
+        require OpenQA::Parser::Format::TAP;
+        my $parser = OpenQA::Parser::Format::TAP->new()->load("ulogs/$file");
+
+        # Missing record_soft_failure
+        for my $result (@{$parser->results()}) {
+            $result->{result} = 'softfail';
+        }
+
+        $parser->write_output(bmwqemu::result_dir());
+        $parser->write_test_result(bmwqemu::result_dir());
+
+        $parser->tests->each(
+            sub {
+                push(@tests, $_->to_openqa);
+            });
+    };
+    return $autotest::current_test->register_extra_test_results(\@tests);
+}
+
 sub bats_tests {
     my ($log_file, $_env, $skip_tests) = @_;
     my %env = %{$_env};
@@ -358,10 +385,10 @@ sub bats_tests {
 
     unless (@tests) {
         my @skip_tests = split(/\s+/, get_var('BATS_SKIP', '') . " " . $skip_tests);
-        patch_logfile($log_file, @skip_tests);
+        # patch_logfile($log_file, @skip_tests);
     }
 
-    parse_extra_log(TAP => $log_file);
+    bats_parse_log $log_file;
 
     run_command "rm -rf $tmp_dir || true";
 
