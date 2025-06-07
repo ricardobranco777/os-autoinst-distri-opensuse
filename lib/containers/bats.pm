@@ -268,7 +268,7 @@ sub selinux_hack {
 sub bats_post_hook {
     select_serial_terminal;
 
-    my $log_dir = "/tmp/logs/";
+    my $log_dir = "/tmp/bats-logs/";
     assert_script_run "mkdir -p $log_dir";
     assert_script_run "cd $log_dir";
 
