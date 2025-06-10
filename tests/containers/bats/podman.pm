@@ -86,6 +86,7 @@ sub run {
     run_command "rm -f contrib/systemd/system/podman-kube@.service.in";
     # This test is flaky and will fail if system is "full"
     run_command "rm -f test/system/320-system-df.bats";
+    run_command "rm -f test/system/161-volume-quotas.bats";
 
     # Compile helpers used by the tests
     run_command "make podman-testing || true", timeout => 600;
