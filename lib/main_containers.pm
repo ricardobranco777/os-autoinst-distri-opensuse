@@ -317,6 +317,14 @@ sub load_container_tests {
         return;
     }
 
+    if (get_var('CONTAINER_TESTS')) {
+        foreach my $test (split(',\s*', get_var('CONTAINER_TESTS'))) {
+            my $run_args = OpenQA::Test::RunArgs->new();
+            loadtest("containers/$test", run_args => $run_args);
+        }
+        return;
+    }
+
     if (my $bats_package = get_var('BATS_PACKAGE', '')) {
         $bats_package = ($bats_package eq "aardvark-dns") ? "aardvark" : $bats_package;
         loadtest "containers/bats/$bats_package";
