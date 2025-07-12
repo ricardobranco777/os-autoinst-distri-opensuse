@@ -5,6 +5,8 @@ aardvark-dns:
     BATS_SKIP: 100-basic-name-resolution 200-two-networks 300-three-networks
 buildah:
   # Note on patches:
+  # https://github.com/containers/buildah/pull/5885 is needed for PR#6132
+  # https://github.com/containers/buildah/pull/6132 is needed for bud & run
   # https://github.com/containers/buildah/pull/6226 is needed for bud & run
   opensuse-Tumbleweed:
     BATS_PATCHES:
@@ -14,6 +16,8 @@ buildah:
     BATS_SKIP_USER:
   sle-16.0:
     BATS_PATCHES:
+    - 5885
+    - 6132
     - 6226
     BATS_SKIP: sbom
     BATS_SKIP_ROOT: bud
