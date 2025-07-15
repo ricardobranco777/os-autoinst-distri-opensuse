@@ -253,9 +253,6 @@ sub bats_setup {
         assert_script_run "semodule -DB || true";
     }
 
-    # Remove mounts.conf
-    run_command "rm -vf /etc/containers/mounts.conf /usr/share/containers/mounts.conf";
-
     # Disable tmpfs from next boot
     if (script_output("findmnt -no FSTYPE /tmp", proceed_on_failure => 1) =~ /tmpfs/) {
         # Bind mount /tmp to /var/tmp
