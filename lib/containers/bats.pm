@@ -469,13 +469,14 @@ sub bats_sources {
             } else {
                 run_command "curl $curl_opts -O $url", timeout => 900;
             }
-            # Some patches (e.g., podman's 25942) fail to apply cleanly due to missing files so
-            # try `git apply` first and if it fails use `--include` to restrict the patch scope
-            # to the package tests directory.  Remove this when `git-apply` has a new option to
-            # ignore missing files.
+            # NOTES
+            # - podman's 25942 fails to apply cleanly due to missing files so try `git apply` first and
+            #   if it fails use `--include` to restrict the patch scope to the package tests directory.
+            #   Remove this when `git-apply` has a new option to ignore missing files.
+            # - buildah's 5885 needs --ignore-whitespace
             my $file = basename($url);
-            my $apply_cmd = "git apply -3 --ours $file";
-            $apply_cmd .= " || git apply -3 --ours --include '$tests_dir{$package}/*' $file";
+            my $apply_cmd = "git apply -3 --ours --ignore-whitespace $file";
+            $apply_cmd .= " || git apply -3 --ours --ignore-whitespace --include '$tests_dir{$package}/*' $file";
             run_command $apply_cmd;
         }
     }

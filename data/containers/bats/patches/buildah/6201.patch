@@ -1,0 +1,1287 @@
+From 3f8c06d83c0c035730a343f051d38fd64b55ce56 Mon Sep 17 00:00:00 2001
+From: Nalin Dahyabhai <nalin@redhat.com>
+Date: Wed, 16 Apr 2025 13:37:44 -0400
+Subject: [PATCH 1/5] run: handle relabeling bind mounts ourselves
+
+Handle requested relabeling of bind mounts (i.e., the "z" and "Z" flags)
+directly, instead of letting the runtime handle the relabeling.
+
+Signed-off-by: Nalin Dahyabhai <nalin@redhat.com>
+---
+ run_linux.go   | 30 ++++++++++++++++++++++++++++++
+ tests/run.bats | 12 ++++++------
+ 2 files changed, 36 insertions(+), 6 deletions(-)
+
+diff --git a/run_linux.go b/run_linux.go
+index 9a55cba3b7e..584507ae4e4 100644
+--- a/run_linux.go
++++ b/run_linux.go
+@@ -543,6 +543,33 @@ rootless=%d
+ 
+ 	defer b.cleanupTempVolumes()
+ 
++	// Handle mount flags that request that the source locations for "bind" mountpoints be
++	// relabeled, and filter those flags out of the list of mount options we pass to the
++	// runtime.
++	for i := range spec.Mounts {
++		switch spec.Mounts[i].Type {
++		default:
++			continue
++		case "bind", "rbind":
++			// all good, keep going
++		}
++		zflag := ""
++		for _, opt := range spec.Mounts[i].Options {
++			if opt == "z" || opt == "Z" {
++				zflag = opt
++			}
++		}
++		if zflag == "" {
++			continue
++		}
++		spec.Mounts[i].Options = slices.DeleteFunc(spec.Mounts[i].Options, func(opt string) bool {
++			return opt == "z" || opt == "Z"
++		})
++		if err := relabel(spec.Mounts[i].Source, b.MountLabel, zflag == "z"); err != nil {
++			return fmt.Errorf("setting file label %q on %q: %w", b.MountLabel, spec.Mounts[i].Source, err)
++		}
++	}
++
+ 	switch isolation {
+ 	case define.IsolationOCI:
+ 		var moreCreateArgs []string
+@@ -1139,16 +1166,19 @@ func (b *Builder) runSetupVolumeMounts(mountLabel string, volumeMounts []string,
+ 			if err := relabel(host, mountLabel, true); err != nil {
+ 				return specs.Mount{}, err
+ 			}
++			options = slices.DeleteFunc(options, func(o string) bool { return o == "z" })
+ 		}
+ 		if foundZ {
+ 			if err := relabel(host, mountLabel, false); err != nil {
+ 				return specs.Mount{}, err
+ 			}
++			options = slices.DeleteFunc(options, func(o string) bool { return o == "Z" })
+ 		}
+ 		if foundU {
+ 			if err := chown.ChangeHostPathOwnership(host, true, idMaps.processUID, idMaps.processGID); err != nil {
+ 				return specs.Mount{}, err
+ 			}
++			options = slices.DeleteFunc(options, func(o string) bool { return o == "U" })
+ 		}
+ 		if foundO {
+ 			if (upperDir != "" && workDir == "") || (workDir != "" && upperDir == "") {
+diff --git a/tests/run.bats b/tests/run.bats
+index 289ccb1223a..c5722c750e8 100644
+--- a/tests/run.bats
++++ b/tests/run.bats
+@@ -417,7 +417,7 @@ function configure_and_check_user() {
+ 	zflag=
+ 	if which selinuxenabled > /dev/null 2> /dev/null ; then
+ 		if selinuxenabled ; then
+-			zflag=z
++			zflag=,z
+ 		fi
+ 	fi
+ 	${OCI} --version
+@@ -426,23 +426,23 @@ function configure_and_check_user() {
+ 	cid=$output
+ 	mkdir -p ${TEST_SCRATCH_DIR}/was:empty
+ 	# As a baseline, this should succeed.
+-	run_buildah run --mount type=tmpfs,dst=/var/tmpfs-not-empty                                           $cid touch /var/tmpfs-not-empty/testfile
++	run_buildah run --mount type=tmpfs,dst=/var/tmpfs-not-empty                                                      $cid touch /var/tmpfs-not-empty/testfile
+ 	# This should succeed, but the writes should effectively be discarded
+-	run_buildah run --mount type=bind,src=${TEST_SCRATCH_DIR}/was:empty,dst=/var/not-empty,rw${zflag:+,${zflag}}      $cid touch /var/not-empty/testfile
++	run_buildah run --mount type=bind,src=${TEST_SCRATCH_DIR}/was:empty,dst=/var/not-empty,rw${zflag}                $cid touch /var/not-empty/testfile
+ 	if test -r ${TEST_SCRATCH_DIR}/was:empty/testfile ; then
+ 		die write to mounted type=bind was not discarded, ${TEST_SCRATCH_DIR}/was:empty/testfile exists
+ 	fi
+ 	# If we're parsing the options at all, this should be read-only, so it should fail.
+-	run_buildah 1 run --mount type=bind,src=${TEST_SCRATCH_DIR}/was:empty,dst=/var/not-empty,ro${zflag:+,${zflag}} $cid touch /var/not-empty/testfile
++	run_buildah 1 run --mount type=bind,src=${TEST_SCRATCH_DIR}/was:empty,dst=/var/not-empty,ro${zflag}              $cid touch /var/not-empty/testfile
+ 	# Even if the parent directory doesn't exist yet, this should succeed, but again the write should be discarded.
+-	run_buildah run --mount type=bind,src=${TEST_SCRATCH_DIR}/was:empty,dst=/var/multi-level/subdirectory,rw${zflag:+,${zflag}}       $cid touch /var/multi-level/subdirectory/testfile
++	run_buildah run --mount type=bind,src=${TEST_SCRATCH_DIR}/was:empty,dst=/var/multi-level/subdirectory,rw${zflag} $cid touch /var/multi-level/subdirectory/testfile
+ 	if test -r ${TEST_SCRATCH_DIR}/was:empty/testfile ; then
+ 		die write to mounted type=bind was not discarded, ${TEST_SCRATCH_DIR}/was:empty/testfile exists
+ 	fi
+ 	# And check the same for file volumes, which make life harder because the kernel's overlay
+ 	# filesystem really only wants to be dealing with directories.
+ 	: > ${TEST_SCRATCH_DIR}/was:empty/testfile
+-	run_buildah run --mount type=bind,src=${TEST_SCRATCH_DIR}/was:empty/testfile,dst=/var/different-multi-level/subdirectory/testfile,rw${zflag:+,${zflag}}        $cid sh -c 'echo wrote > /var/different-multi-level/subdirectory/testfile'
++	run_buildah run --mount type=bind,src=${TEST_SCRATCH_DIR}/was:empty/testfile,dst=/var/different-multi-level/subdirectory/testfile,rw${zflag} $cid sh -c 'echo wrote > /var/different-multi-level/subdirectory/testfile'
+ 	if test -s ${TEST_SCRATCH_DIR}/was:empty/testfile ; then
+ 		die write to mounted type=bind was not discarded, ${TEST_SCRATCH_DIR}/was:empty/testfile was written to
+ 	fi
+
+From 4581ef0deed0fba2435197f11165404b2ad6cab6 Mon Sep 17 00:00:00 2001
+From: Nalin Dahyabhai <nalin@redhat.com>
+Date: Tue, 22 Apr 2025 17:46:03 -0400
+Subject: [PATCH 2/5] Add a dummy "runtime" that just dumps its config file
+
+Add a dummy "runtime" that just dumps its runtime config, either the
+entirety of it, or a section of it corresponding to each command line
+argument.  Tests can use it to ensure that we set the right thing in the
+configuration without also depending on the runtime to do as its asked,
+which isn't always something we have control over.
+
+Signed-off-by: Nalin Dahyabhai <nalin@redhat.com>
+---
+ Makefile                              |   5 +-
+ chroot/pty_unsupported.go             |  11 -
+ chroot/run_common.go                  |   3 +-
+ {chroot => internal/pty}/pty_posix.go |   6 +-
+ {chroot => internal/pty}/pty_ptmx.go  |  10 +-
+ internal/pty/pty_unsupported.go       |  13 +
+ rpm/buildah.spec                      |   3 +
+ tests/bud.bats                        |  19 +-
+ tests/dumpspec/dumpspec.go            | 475 ++++++++++++++++++++++++++
+ tests/dumpspec/dumpspec_linux.go      |  41 +++
+ tests/dumpspec/dumpspec_notlinux.go   |  21 ++
+ tests/dumpspec/dumpspec_notunix.go    |  12 +
+ tests/dumpspec/dumpspec_unix.go       |  41 +++
+ tests/dumpspec/notes.md               |  34 ++
+ tests/helpers.bash                    |   1 +
+ tests/tmt/system.fmf                  |   1 +
+ 16 files changed, 664 insertions(+), 32 deletions(-)
+ delete mode 100644 chroot/pty_unsupported.go
+ rename {chroot => internal/pty}/pty_posix.go (87%)
+ rename {chroot => internal/pty}/pty_ptmx.go (82%)
+ create mode 100644 internal/pty/pty_unsupported.go
+ create mode 100644 tests/dumpspec/dumpspec.go
+ create mode 100644 tests/dumpspec/dumpspec_linux.go
+ create mode 100644 tests/dumpspec/dumpspec_notlinux.go
+ create mode 100644 tests/dumpspec/dumpspec_notunix.go
+ create mode 100644 tests/dumpspec/dumpspec_unix.go
+ create mode 100644 tests/dumpspec/notes.md
+
+diff --git a/Makefile b/Makefile
+index 53982bf23c2..b8006aac070 100644
+--- a/Makefile
++++ b/Makefile
+@@ -59,7 +59,7 @@ export GOLANGCI_LINT_VERSION := 2.1.0
+ #     Note: Uses the -N -l go compiler options to disable compiler optimizations
+ #           and inlining. Using these build options allows you to subsequently
+ #           use source debugging tools like delve.
+-all: bin/buildah bin/imgtype bin/copy bin/inet bin/tutorial docs
++all: bin/buildah bin/imgtype bin/copy bin/inet bin/tutorial bin/dumpspec docs
+ 
+ # Update nix/nixpkgs.json its latest stable commit
+ .PHONY: nixpkgs
+@@ -107,6 +107,9 @@ bin/buildah.%: $(SOURCES)
+ 	mkdir -p ./bin
+ 	GOOS=$(word 2,$(subst ., ,$@)) GOARCH=$(word 3,$(subst ., ,$@)) $(GO_BUILD) $(BUILDAH_LDFLAGS) -o $@ -tags "containers_image_openpgp" ./cmd/buildah
+ 
++bin/dumpspec: $(SOURCES)
++	$(GO_BUILD) $(BUILDAH_LDFLAGS) -o $@ $(BUILDFLAGS) ./tests/dumpspec
++
+ bin/imgtype: $(SOURCES)
+ 	$(GO_BUILD) $(BUILDAH_LDFLAGS) -o $@ $(BUILDFLAGS) ./tests/imgtype/imgtype.go
+ 
+diff --git a/chroot/pty_unsupported.go b/chroot/pty_unsupported.go
+deleted file mode 100644
+index 5b6a67d582a..00000000000
+--- a/chroot/pty_unsupported.go
++++ /dev/null
+@@ -1,11 +0,0 @@
+-//go:build !linux && !(freebsd && cgo)
+-
+-package chroot
+-
+-import (
+-	"errors"
+-)
+-
+-func getPtyDescriptors() (int, int, error) {
+-	return -1, -1, errors.New("getPtyDescriptors not supported on this platform")
+-}
+diff --git a/chroot/run_common.go b/chroot/run_common.go
+index 895b4065bac..8e94ff73d71 100644
+--- a/chroot/run_common.go
++++ b/chroot/run_common.go
+@@ -18,6 +18,7 @@ import (
+ 	"syscall"
+ 
+ 	"github.com/containers/buildah/bind"
++	"github.com/containers/buildah/internal/pty"
+ 	"github.com/containers/buildah/util"
+ 	"github.com/containers/storage/pkg/ioutils"
+ 	"github.com/containers/storage/pkg/reexec"
+@@ -217,7 +218,7 @@ func runUsingChrootMain() {
+ 	var stderr io.Writer
+ 	fdDesc := make(map[int]string)
+ 	if options.Spec.Process.Terminal {
+-		ptyMasterFd, ptyFd, err := getPtyDescriptors()
++		ptyMasterFd, ptyFd, err := pty.GetPtyDescriptors()
+ 		if err != nil {
+ 			logrus.Errorf("error opening PTY descriptors: %v", err)
+ 			os.Exit(1)
+diff --git a/chroot/pty_posix.go b/internal/pty/pty_posix.go
+similarity index 87%
+rename from chroot/pty_posix.go
+rename to internal/pty/pty_posix.go
+index 827ed97471d..56383da478e 100644
+--- a/chroot/pty_posix.go
++++ b/internal/pty/pty_posix.go
+@@ -1,6 +1,6 @@
+ //go:build freebsd && cgo
+ 
+-package chroot
++package pty
+ 
+ // #include <fcntl.h>
+ // #include <stdlib.h>
+@@ -37,7 +37,9 @@ func unlockpt(fd int) error {
+ 	return nil
+ }
+ 
+-func getPtyDescriptors() (int, int, error) {
++// GetPtyDescriptors allocates a new pseudoterminal and returns the control and
++// pseudoterminal file descriptors.
++func GetPtyDescriptors() (int, int, error) {
+ 	// Create a pseudo-terminal and open the control side
+ 	controlFd, err := openpt()
+ 	if err != nil {
+diff --git a/chroot/pty_ptmx.go b/internal/pty/pty_ptmx.go
+similarity index 82%
+rename from chroot/pty_ptmx.go
+rename to internal/pty/pty_ptmx.go
+index 53b35760b3d..d60d2d814fc 100644
+--- a/chroot/pty_ptmx.go
++++ b/internal/pty/pty_ptmx.go
+@@ -1,6 +1,6 @@
+ //go:build linux
+ 
+-package chroot
++package pty
+ 
+ import (
+ 	"fmt"
+@@ -11,9 +11,11 @@ import (
+ 	"golang.org/x/sys/unix"
+ )
+ 
+-// Open a PTY using the /dev/ptmx device. The main advantage of using
+-// this instead of posix_openpt is that it avoids cgo.
+-func getPtyDescriptors() (int, int, error) {
++// GetPtyDescriptors allocates a new pseudoterminal and returns the control and
++// pseudoterminal file descriptors.  This implementation uses the /dev/ptmx
++// device. The main advantage of using this instead of posix_openpt is that it
++// avoids cgo.
++func GetPtyDescriptors() (int, int, error) {
+ 	// Create a pseudo-terminal -- open a copy of the master side.
+ 	controlFd, err := unix.Open("/dev/ptmx", os.O_RDWR, 0o600)
+ 	if err != nil {
+diff --git a/internal/pty/pty_unsupported.go b/internal/pty/pty_unsupported.go
+new file mode 100644
+index 00000000000..10416394395
+--- /dev/null
++++ b/internal/pty/pty_unsupported.go
+@@ -0,0 +1,13 @@
++//go:build !linux && !(freebsd && cgo)
++
++package pty
++
++import (
++	"errors"
++)
++
++// GetPtyDescriptors would allocate a new pseudoterminal and return the control and
++// pseudoterminal file descriptors, if only it could.
++func GetPtyDescriptors() (int, int, error) {
++	return -1, -1, errors.New("GetPtyDescriptors not supported on this platform")
++}
+diff --git a/rpm/buildah.spec b/rpm/buildah.spec
+index fca37117a2c..5f269b31a30 100644
+--- a/rpm/buildah.spec
++++ b/rpm/buildah.spec
+@@ -137,6 +137,7 @@ export BUILDTAGS+=" libtrust_openssl"
+ %gobuild -o bin/copy ./tests/copy
+ %gobuild -o bin/tutorial ./tests/tutorial
+ %gobuild -o bin/inet ./tests/inet
++%gobuild -o bin/dumpspec ./tests/dumpspec
+ %{__make} docs
+ 
+ %install
+@@ -148,6 +149,7 @@ cp bin/imgtype %{buildroot}/%{_bindir}/%{name}-imgtype
+ cp bin/copy    %{buildroot}/%{_bindir}/%{name}-copy
+ cp bin/tutorial %{buildroot}/%{_bindir}/%{name}-tutorial
+ cp bin/inet     %{buildroot}/%{_bindir}/%{name}-inet
++cp bin/dumpspec %{buildroot}/%{_bindir}/%{name}-dumpspec
+ 
+ rm %{buildroot}%{_datadir}/%{name}/test/system/tools/build/*
+ 
+@@ -172,6 +174,7 @@ rm %{buildroot}%{_datadir}/%{name}/test/system/tools/build/*
+ %{_bindir}/%{name}-copy
+ %{_bindir}/%{name}-tutorial
+ %{_bindir}/%{name}-inet
++%{_bindir}/%{name}-dumpspec
+ %{_datadir}/%{name}/test
+ 
+ %changelog
+diff --git a/tests/bud.bats b/tests/bud.bats
+index bd83d2b916b..27d6069c2d5 100644
+--- a/tests/bud.bats
++++ b/tests/bud.bats
+@@ -6065,7 +6065,6 @@ _EOF
+ 
+ @test "bud with --cgroup-parent" {
+   skip_if_rootless_environment
+-  skip_if_no_runtime
+   skip_if_chroot
+ 
+   _prefetch alpine
+@@ -6073,24 +6072,18 @@ _EOF
+   mytmpdir=${TEST_SCRATCH_DIR}/my-dir
+   mkdir -p ${mytmpdir}
+   cat > $mytmpdir/Containerfile << _EOF
+-from alpine
+-run cat /proc/self/cgroup
++FROM alpine
++RUN .linux.cgroupsPath
+ _EOF
+ 
+   # with cgroup-parent
+   run_buildah --cgroup-manager cgroupfs build --cgroupns=host --cgroup-parent test-cgroup -t with-flag \
+-                  $WITH_POLICY_JSON --file ${mytmpdir}/Containerfile .
+-  if is_cgroupsv2; then
+-    expect_output --from="${lines[2]}" "0::/test-cgroup"
+-  else
+-    expect_output --substring "/test-cgroup"
+-  fi
++                  --runtime ${DUMPSPEC_BINARY} $WITH_POLICY_JSON --file ${mytmpdir}/Containerfile .
++  expect_output --substring "test-cgroup"
+   # without cgroup-parent
+   run_buildah --cgroup-manager cgroupfs build -t without-flag \
+-                  $WITH_POLICY_JSON --file ${mytmpdir}/Containerfile .
+-  if [ -n "$(grep "test-cgroup" <<< "$output")" ]; then
+-    die "Unexpected cgroup."
+-  fi
++                  --runtime ${DUMPSPEC_BINARY} $WITH_POLICY_JSON --file ${mytmpdir}/Containerfile .
++  assert "$output" !~ test-cgroup
+ }
+ 
+ @test "bud with --cpu-period and --cpu-quota" {
+diff --git a/tests/dumpspec/dumpspec.go b/tests/dumpspec/dumpspec.go
+new file mode 100644
+index 00000000000..f20d8860684
+--- /dev/null
++++ b/tests/dumpspec/dumpspec.go
+@@ -0,0 +1,475 @@
++package main
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"os"
++	"path/filepath"
++	"strconv"
++	"strings"
++	"syscall"
++	"time"
++	"unicode"
++
++	"github.com/containers/storage/pkg/ioutils"
++	"github.com/containers/storage/pkg/reexec"
++	rspec "github.com/opencontainers/runtime-spec/specs-go"
++	"github.com/sirupsen/logrus"
++	"github.com/spf13/cobra"
++)
++
++// use defined names for our various commands. we absolutely don't support
++// everything that an actual functional runtime would, and have no intention of
++// expanding to do so
++type modeType string
++
++const (
++	modeCreate  = modeType("create")
++	modeStart   = modeType("start")
++	modeState   = modeType("state")
++	modeKill    = modeType("kill")
++	modeDelete  = modeType("delete")
++	subprocName = "dumpspec-subproc"
++)
++
++// signalsByName is a guess at which signals we'd be asked to send to a child
++// process, currently restricted to the subset defined across all of our
++// targets
++var signalsByName = map[string]syscall.Signal{
++	"SIGABRT": syscall.SIGABRT,
++	"SIGALRM": syscall.SIGALRM,
++	"SIGBUS":  syscall.SIGBUS,
++	"SIGFPE":  syscall.SIGFPE,
++	"SIGHUP":  syscall.SIGHUP,
++	"SIGILL":  syscall.SIGILL,
++	"SIGINT":  syscall.SIGINT,
++	"SIGKILL": syscall.SIGKILL,
++	"SIGPIPE": syscall.SIGPIPE,
++	"SIGQUIT": syscall.SIGQUIT,
++	"SIGSEGV": syscall.SIGSEGV,
++	"SIGTERM": syscall.SIGTERM,
++	"SIGTRAP": syscall.SIGTRAP,
++}
++
++var (
++	globalArgs struct {
++		debug         bool
++		cgroupManager string
++		log           string
++		logFormat     string
++		logLevel      string
++		root          string
++		systemdCgroup bool
++		rootless      bool
++	}
++	createArgs struct {
++		bundleDir     string
++		configFile    string
++		consoleSocket string
++		pidFile       string
++		noPivot       bool
++		noNewKeyring  bool
++		preserveFds   int
++	}
++	stateArgs struct {
++		all   bool
++		pid   int
++		regex string
++	}
++	killArgs struct {
++		all    bool
++		pid    int
++		regex  string
++		signal int
++	}
++	deleteArgs struct {
++		force bool
++		regex string
++	}
++)
++
++func main() {
++	if reexec.Init() {
++		return
++	}
++
++	if len(os.Args) < 2 {
++		return
++	}
++
++	var container, containerID, containerDir string
++
++	mainCommand := cobra.Command{
++		Use:   "dumpspec",
++		Short: "fake OCI runtime",
++		PersistentPreRunE: func(_ *cobra.Command, args []string) error {
++			tmpdir, ok := os.LookupEnv("XDG_RUNTIME_DIR")
++			if !ok {
++				tmpdir = filepath.Join(os.TempDir(), strconv.Itoa(os.Getuid()))
++			}
++			if globalArgs.root != "" {
++				tmpdir = globalArgs.root
++			}
++			tmpdir = filepath.Join(tmpdir, "dumpspec")
++			if err := os.MkdirAll(tmpdir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
++				return fmt.Errorf("ensuring that %q exists: %w", tmpdir, err)
++			}
++			if len(args) > 0 {
++				// this is the first arg for all of the commands that we care about
++				container = args[0]
++			}
++			containerID = mapToContainerID(container)
++			containerDir = filepath.Join(tmpdir, containerID)
++			return nil
++		},
++	}
++	mainFlags := mainCommand.PersistentFlags()
++	mainFlags.BoolVar(&globalArgs.debug, "debug", false, "log for debugging")
++	mainFlags.BoolVar(&globalArgs.systemdCgroup, "systemd-cgroup", false, "use systemd for handling cgroups")
++	mainFlags.BoolVar(&globalArgs.rootless, "rootless", false, "ignore some settings to that conflict with rootless operation")
++	mainFlags.StringVar(&globalArgs.cgroupManager, "cgroup-manager", "cgroupfs", "method for managing cgroups")
++	mainFlags.StringVar(&globalArgs.log, "log", "", "logging destination")
++	mainFlags.StringVar(&globalArgs.logFormat, "log-format", "", "logging format specifier")
++	mainFlags.StringVar(&globalArgs.logLevel, "log-level", "", "logging level")
++	rootUsage := "root `directory` of runtime data"
++	rootDefault := ""
++	if xdgRuntimeDir, ok := os.LookupEnv("XDG_RUNTIME_DIR"); ok {
++		rootUsage += " (default $XDG_RUNTIME_DIR)"
++		rootDefault = xdgRuntimeDir
++	}
++	mainFlags.StringVar(&globalArgs.root, "root", rootDefault, rootUsage)
++
++	createCommand := &cobra.Command{
++		Use:   string(modeCreate),
++		Args:  cobra.ExactArgs(1),
++		Short: "create a ready-to-start container process",
++		RunE: func(_ *cobra.Command, _ []string) error {
++			if err := os.MkdirAll(containerDir, 0o700); err != nil {
++				return fmt.Errorf("creating container directory: %w", err)
++			}
++			configFile := createArgs.configFile
++			if configFile == "" {
++				configFile = filepath.Join(createArgs.bundleDir, "config.json")
++			}
++			config, err := os.ReadFile(configFile)
++			if err != nil {
++				return fmt.Errorf("reading runtime configuration: %w", err)
++			}
++			var spec rspec.Spec
++			if err := json.Unmarshal(config, &spec); err != nil {
++				return fmt.Errorf("parsing runtime configuration: %w", err)
++			}
++			if err := os.WriteFile(filepath.Join(containerDir, "config.json"), config, 0o600); err != nil {
++				return fmt.Errorf("saving copy of runtime configuration: %w", err)
++			}
++			state := rspec.State{
++				Version: rspec.Version,
++				ID:      container,
++				Bundle:  createArgs.bundleDir,
++			}
++			stateBytes, err := json.Marshal(state)
++			if err != nil {
++				return fmt.Errorf("encoding initial runtime state: %w", err)
++			}
++			if err := os.WriteFile(filepath.Join(containerDir, "state"), stateBytes, 0o600); err != nil {
++				return fmt.Errorf("writing initial runtime state: %w", err)
++			}
++			pr, pw, err := os.Pipe()
++			if err != nil {
++				return fmt.Errorf("internal error: %w", err)
++			}
++			defer pr.Close()
++			cmd := getStarter(containerDir, createArgs.consoleSocket, createArgs.pidFile, spec, pw)
++			if err := cmd.Start(); err != nil {
++				return fmt.Errorf("internal error: %w", err)
++			}
++			pw.Close()
++			ready, err := io.ReadAll(pr)
++			if err != nil {
++				return fmt.Errorf("waiting for child to start: %w", err)
++			}
++			if strings.TrimSpace(string(ready)) != "OK" {
++				return fmt.Errorf("unexpected child status %q", string(ready))
++			}
++			return nil
++		},
++	}
++	createFlags := createCommand.Flags()
++	createFlags.StringVarP(&createArgs.bundleDir, "bundle", "b", "", "`directory` containing config.json")
++	createFlags.StringVarP(&createArgs.configFile, "config", "f", "", "`path` to config.json")
++	createFlags.StringVar(&createArgs.consoleSocket, "console-socket", "", "socket `path` for passing PTY")
++	createFlags.StringVar(&createArgs.pidFile, "pid-file", "", "`path` in which to store child PID")
++	createFlags.BoolVar(&createArgs.noPivot, "no-pivot", false, "use chroot() instead of pivot_root()")
++	createFlags.BoolVar(&createArgs.noNewKeyring, "no-new-keyring", false, "don't create a new keyring")
++	mainCommand.AddCommand(createCommand)
++
++	startCommand := &cobra.Command{
++		Use:   string(modeStart),
++		Args:  cobra.ExactArgs(1),
++		Short: "start a previously-created container process",
++		RunE: func(_ *cobra.Command, _ []string) error {
++			if err := ioutils.AtomicWriteFile(filepath.Join(containerDir, "start"), []byte("start"), 0o600); err != nil {
++				return fmt.Errorf("writing start file: %w", err)
++			}
++			return nil
++		},
++	}
++	mainCommand.AddCommand(startCommand)
++
++	stateCommand := &cobra.Command{
++		Use:   string(modeState),
++		Args:  cobra.ExactArgs(1),
++		Short: "poll the state of a container process",
++		RunE: func(_ *cobra.Command, _ []string) error {
++			stateFile, err := os.Open(filepath.Join(containerDir, "state"))
++			if err != nil {
++				return err
++			}
++			defer stateFile.Close()
++			if _, err := io.Copy(os.Stdout, stateFile); err != nil {
++				return fmt.Errorf("copying state file: %w", err)
++			}
++			return nil
++		},
++	}
++	stateFlags := stateCommand.Flags()
++	stateFlags.BoolVarP(&stateArgs.all, "all", "a", false, "start all containers")
++	stateFlags.IntVar(&stateArgs.pid, "pid", 0, "start container by `pid`")
++	stateFlags.StringVarP(&stateArgs.regex, "regex", "r", "", "start containers with IDs matching a `regex`")
++	mainCommand.AddCommand(stateCommand)
++
++	killCommand := &cobra.Command{
++		Use:   string(modeKill),
++		Args:  cobra.RangeArgs(1, 2),
++		Short: "signal/kill a container process",
++		RunE: func(_ *cobra.Command, args []string) error {
++			if len(args) > 1 {
++				signalString := args[1]
++				signalNumber, err := strconv.Atoi(signalString)
++				if err != nil {
++					n, ok := signalsByName[signalString]
++					if !ok {
++						n, ok = signalsByName["SIG"+signalString]
++						if !ok {
++							return fmt.Errorf("%v: unrecognized signal %q", os.Args, signalString)
++						}
++					}
++					signalNumber = int(n)
++				}
++				killArgs.signal = signalNumber
++			}
++			if err := ioutils.AtomicWriteFile(filepath.Join(containerDir, "kill"), []byte(strconv.Itoa(killArgs.signal)), 0o600); err != nil {
++				return fmt.Errorf("writing exit status file: %w", err)
++			}
++			return nil
++		},
++	}
++	killFlags := killCommand.Flags()
++	killFlags.BoolVarP(&killArgs.all, "all", "a", false, "signal/kill all containers")
++	killFlags.IntVar(&killArgs.pid, "pid", 0, "signal/kill container by `pid`")
++	killFlags.StringVarP(&killArgs.regex, "regex", "r", "", "signal/kill containers with IDs matching a `regex`")
++	mainCommand.AddCommand(killCommand)
++
++	deleteCommand := &cobra.Command{
++		Use:   string(modeDelete),
++		Args:  cobra.ExactArgs(1),
++		Short: "delete a container process",
++		RunE: func(_ *cobra.Command, _ []string) error {
++			if err := os.RemoveAll(containerDir); err != nil {
++				return fmt.Errorf("removing container directory: %w", err)
++			}
++			return nil
++		},
++	}
++	deleteFlags := deleteCommand.Flags()
++	deleteFlags.StringVarP(&deleteArgs.regex, "regex", "r", "", "delete containers with IDs matching a `regex`")
++	deleteFlags.BoolVarP(&deleteArgs.force, "force", "f", false, "forcibly stop containers which are not stopped")
++	mainCommand.AddCommand(deleteCommand)
++
++	err := mainCommand.Execute()
++	if err != nil {
++		logrus.Fatal(err)
++		os.Exit(1)
++	}
++	os.Exit(0)
++}
++
++func mapToContainerID(container string) string {
++	var encoder strings.Builder
++	for _, c := range container {
++		if unicode.IsLetter(c) || unicode.IsNumber(c) {
++			if _, err := encoder.WriteRune(c); err != nil {
++				logrus.Fatalf("%v: encoding container ID: %q: %v", os.Args, c, err)
++			}
++		} else {
++			if _, err := encoder.WriteString(strconv.Itoa(int(c))); err != nil {
++				logrus.Fatalf("%v: encoding container ID: %q: %v", os.Args, c, err)
++			}
++		}
++	}
++	return encoder.String()
++}
++
++func waitForFile(dirname, basename string) string {
++	waitedFile := filepath.Join(dirname, basename)
++	for {
++		if _, err := os.Stat(dirname); err != nil {
++			logrus.Fatalf("%v: %v", os.Args, err)
++		}
++		st, err := os.Stat(waitedFile)
++		if err != nil && !errors.Is(err, os.ErrNotExist) {
++			logrus.Fatalf("%v: %v", os.Args, err)
++		}
++		if err != nil || st.Size() == 0 {
++			time.Sleep(100 * time.Millisecond)
++			continue
++		}
++		contents, err := os.ReadFile(waitedFile)
++		if err != nil {
++			logrus.Fatalf("%v: %v", os.Args, err)
++		}
++		text := strings.TrimSpace(string(contents))
++		return text
++	}
++}
++
++func init() {
++	reexec.Register(subprocName, subproc)
++}
++
++func subproc() {
++	mainCommand := cobra.Command{
++		Use:   "dumpspec",
++		Short: "fake OCI runtime",
++		Long:  "dumpspec containerDir consoleSocket pidFile [spec ...]",
++		Args:  cobra.ExactArgs(3),
++		RunE: func(_ *cobra.Command, args []string) error {
++			dir := args[0]
++			consoleSocket := args[1]
++			pidFile := args[2]
++
++			config, err := os.ReadFile(filepath.Join(dir, "config.json"))
++			if err != nil {
++				return fmt.Errorf("reading runtime configuration: %w", err)
++			}
++			var spec rspec.Spec
++			if err := json.Unmarshal(config, &spec); err != nil {
++				return fmt.Errorf("parsing runtime configuration: %w", err)
++			}
++
++			stateBytes, err := os.ReadFile(filepath.Join(dir, "state"))
++			if err != nil {
++				return fmt.Errorf("reading initial state : %w", err)
++			}
++			var state rspec.State
++			if err := json.Unmarshal(stateBytes, &state); err != nil {
++				return fmt.Errorf("parsing initial state: %w", err)
++			}
++
++			saveState := func() error {
++				stateBytes, err := json.Marshal(state)
++				if err != nil {
++					return fmt.Errorf("encoding updated state: %w", err)
++				}
++				err = ioutils.AtomicWriteFile(filepath.Join(dir, "state"), stateBytes, 0o600)
++				if err != nil {
++					return fmt.Errorf("writing updated state: %w", err)
++				}
++				return nil
++			}
++
++			output := io.Writer(os.Stdout)
++
++			if pidFile != "" {
++				if err := ioutils.AtomicWriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
++					return fmt.Errorf("writing pid file %q: %w", pidFile, err)
++				}
++			}
++
++			state.Pid = os.Getpid()
++			state.Status = rspec.StateCreated
++			if err := saveState(); err != nil {
++				return err
++			}
++
++			if consoleSocket != "" {
++				if output, err = sendConsoleDescriptor(consoleSocket); err != nil {
++					return fmt.Errorf("sending terminal control fd to parent process: %w", err)
++				}
++			}
++
++			ok := os.NewFile(3, "startup status pipe")
++			fmt.Fprintf(ok, "OK")
++			ok.Close()
++
++			start := waitForFile(dir, "start")
++			if start != "start" {
++				return fmt.Errorf("unexpected start indicator %q", start)
++			}
++
++			state.Status = rspec.StateRunning
++			if err := saveState(); err != nil {
++				return err
++			}
++
++			if spec.Process == nil || len(spec.Process.Args) == 0 {
++				if _, err := io.Copy(output, bytes.NewReader(config)); err != nil {
++					return fmt.Errorf("writing configuration: %w", err)
++				}
++			} else {
++				for _, query := range spec.Process.Args {
++					var data any
++					if err := json.Unmarshal(config, &data); err != nil {
++						return fmt.Errorf("parsing runtime configuration: %w", err)
++					}
++					path := strings.Split(query, ".")
++					for i, component := range path {
++						if component == "" {
++							continue
++						}
++						pathSoFar := strings.Join(path[:i], ".")
++						if data == nil {
++							return fmt.Errorf("unable to descend into %q after %q", component, pathSoFar)
++						}
++						if m, ok := data.(map[string]any); ok {
++							data = m[component]
++						} else if s, ok := data.([]any); ok {
++							i, err := strconv.Atoi(component)
++							if err != nil {
++								return fmt.Errorf("%q is not numeric while indexing slice at %q", component, pathSoFar)
++							}
++							data = s[i]
++						} else {
++							return fmt.Errorf("unable to descend into %q after %q", component, pathSoFar)
++						}
++					}
++					final, err := json.Marshal(data)
++					if err != nil {
++						return fmt.Errorf("encoding query result: %w", err)
++					}
++					if len(final) == 0 || final[len(final)-1] != '\n' {
++						final = append(final, byte('\n'))
++					}
++					if _, err := io.Copy(output, bytes.NewReader(final)); err != nil {
++						return fmt.Errorf("writing configuration subset %q: %w", query, err)
++					}
++				}
++			}
++
++			state.Status = rspec.StateStopped
++			if err := saveState(); err != nil {
++				return err
++			}
++			return nil
++		},
++	}
++	err := mainCommand.Execute()
++	if err != nil {
++		logrus.Fatal(err)
++		os.Exit(1)
++	}
++	os.Exit(0)
++}
+diff --git a/tests/dumpspec/dumpspec_linux.go b/tests/dumpspec/dumpspec_linux.go
+new file mode 100644
+index 00000000000..961033ad3f1
+--- /dev/null
++++ b/tests/dumpspec/dumpspec_linux.go
+@@ -0,0 +1,41 @@
++package main
++
++import (
++	"os"
++	"slices"
++	"syscall"
++
++	"github.com/containers/storage/pkg/unshare"
++	rspec "github.com/opencontainers/runtime-spec/specs-go"
++)
++
++func getStarter(containerDir, consoleSocket, pidFile string, spec rspec.Spec, extraFile *os.File) interface{ Start() error } {
++	cmd := unshare.Command(subprocName, containerDir, consoleSocket, pidFile)
++	cmd.Stdin = os.Stdin
++	cmd.Stdout = os.Stdout
++	cmd.Stderr = os.Stderr
++	if spec.Linux != nil {
++		for _, ns := range spec.Linux.Namespaces {
++			switch ns.Type {
++			case rspec.UserNamespace:
++				cmd.UnshareFlags |= syscall.CLONE_NEWUSER
++			case rspec.NetworkNamespace: // caller is expecting to configure networking for this process's network namespace
++				cmd.UnshareFlags |= syscall.CLONE_NEWNET
++			case rspec.MountNamespace:
++				cmd.UnshareFlags |= syscall.CLONE_NEWNS
++			case rspec.IPCNamespace:
++				cmd.UnshareFlags |= syscall.CLONE_NEWIPC
++			case rspec.UTSNamespace:
++				cmd.UnshareFlags |= syscall.CLONE_NEWUTS
++			case rspec.CgroupNamespace:
++				cmd.UnshareFlags |= syscall.CLONE_NEWCGROUP
++			}
++		}
++		cmd.UidMappings = slices.Clone(spec.Linux.UIDMappings)
++		cmd.GidMappings = slices.Clone(spec.Linux.GIDMappings)
++	}
++	if extraFile != nil {
++		cmd.ExtraFiles = append([]*os.File{extraFile}, cmd.ExtraFiles...)
++	}
++	return cmd
++}
+diff --git a/tests/dumpspec/dumpspec_notlinux.go b/tests/dumpspec/dumpspec_notlinux.go
+new file mode 100644
+index 00000000000..fa8d47e622d
+--- /dev/null
++++ b/tests/dumpspec/dumpspec_notlinux.go
+@@ -0,0 +1,21 @@
++//go:build !linux
++
++package main
++
++import (
++	"os"
++	"os/exec"
++
++	rspec "github.com/opencontainers/runtime-spec/specs-go"
++)
++
++func getStarter(containerDir, consoleSocket, pidFile string, _ rspec.Spec, extraFile *os.File) interface{ Start() error } {
++	cmd := exec.Command(subprocName, containerDir, consoleSocket, pidFile)
++	cmd.Stdin = os.Stdin
++	cmd.Stdout = os.Stdout
++	cmd.Stderr = os.Stderr
++	if extraFile != nil {
++		cmd.ExtraFiles = append([]*os.File{extraFile}, cmd.ExtraFiles...)
++	}
++	return cmd
++}
+diff --git a/tests/dumpspec/dumpspec_notunix.go b/tests/dumpspec/dumpspec_notunix.go
+new file mode 100644
+index 00000000000..17ae7fcc7e0
+--- /dev/null
++++ b/tests/dumpspec/dumpspec_notunix.go
+@@ -0,0 +1,12 @@
++//go:build windows
++
++package main
++
++import (
++	"errors"
++	"os"
++)
++
++func sendConsoleDescriptor(consoleSocket string) (*os.File, error) {
++	return nil, errors.New("unable to transport pseudoterminal descriptors")
++}
+diff --git a/tests/dumpspec/dumpspec_unix.go b/tests/dumpspec/dumpspec_unix.go
+new file mode 100644
+index 00000000000..8d02382e7c4
+--- /dev/null
++++ b/tests/dumpspec/dumpspec_unix.go
+@@ -0,0 +1,41 @@
++//go:build !windows
++
++package main
++
++import (
++	"fmt"
++	"net"
++	"os"
++
++	"github.com/containers/buildah/internal/pty"
++	"github.com/sirupsen/logrus"
++	"golang.org/x/sys/unix"
++)
++
++func sendConsoleDescriptor(consoleSocket string) (*os.File, error) {
++	closePty := true
++	control, pty, err := pty.GetPtyDescriptors()
++	if err != nil {
++		return nil, fmt.Errorf("allocating pseudo-terminal: %w", err)
++	}
++	defer unix.Close(control)
++	defer func() {
++		if closePty {
++			if err := unix.Close(pty); err != nil {
++				logrus.Errorf("closing pty descriptor %d: %v", pty, err)
++			}
++		}
++	}()
++	socketReceiver, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: consoleSocket, Net: "unix"})
++	if err != nil {
++		return nil, fmt.Errorf("allocating pseudo-terminal: %w", err)
++	}
++	defer socketReceiver.Close()
++	rights := unix.UnixRights(control)
++	_, _, err = socketReceiver.WriteMsgUnix(nil, rights, nil)
++	if err != nil {
++		return nil, fmt.Errorf("sending terminal control fd to parent process: %w", err)
++	}
++	closePty = false
++	return os.NewFile(uintptr(pty), "controlling terminal"), nil
++}
+diff --git a/tests/dumpspec/notes.md b/tests/dumpspec/notes.md
+new file mode 100644
+index 00000000000..1c8ac7fbf92
+--- /dev/null
++++ b/tests/dumpspec/notes.md
+@@ -0,0 +1,34 @@
++Global flags:
++ crun: --cgroup-manager=MANAGER --debug --log=FILE --log-format={text|json} --log-level --root=DIR --rootless={true|false|auto} --systemd-cgroup
++ runc: --debug --log=FILE --log-format={text|json} --root=DIR --systemd-cgroup --rootless={true|false|auto}
++
++create [-b|--bundle dir] [--console-socket[=]path] [--pid-file[=]path] [--no-pivot] [--preserve-fds[=]N] containerID
++ runc: [--pidfd-socket=path] [--no-new-keyring]
++ crun: [-f|--config file] [--no-subreaper (ignored)] [--no-new-keyring]
++ runsc: [--pidfd-socket=path]
++* Start keeping track of containerID under --root or $XDG_RUNTIME_DIR/$runtimeName
++* If console socket given, allocate a pseudoterminal, connect to it, and pass a TTY descriptor.
++* If not, pass stdio down directly.
++* Prepare, but have babysitter wait before starting process.
++
++start containerID
++* Start process connected to stdio or terminal.
++
++state containerID
++ crun: [-a|--all] [-r|--regex regex]
++ runsc: [-all|--all] [-pid int (in parent pid namespace)]
++* Output a JSON-encoded github.com/opencontainers/runtime-spec/specs-go.State value on stdout.
++
++kill containerID [signal]
++ crun: [-a|--all] [-r|--regex regex]
++ runsc: [-all|--all] [-pid int (in parent pid namespace)]
++* Send signal to process tree.
++
++delete containerID
++ runc: [-f|--force (SIGKILL first if need be)]
++ crun: [-f|--force (SIGKILL first if need be)] [-r|--regex regex]
++ runsc: [-force|--force]
++
++runc: checkpoint events exec features list pause ps resume restore run spec state update
++crun: checkpoint exec features list pause ps resume restore run spec state update
++runsc: checkpoint do events exec flags list pause port-forward ps restore resume run spec state wait
+diff --git a/tests/helpers.bash b/tests/helpers.bash
+index ba2d291f3db..c2db33bc32a 100644
+--- a/tests/helpers.bash
++++ b/tests/helpers.bash
+@@ -8,6 +8,7 @@ IMGTYPE_BINARY=${IMGTYPE_BINARY:-$TEST_SOURCES/../bin/imgtype}
+ COPY_BINARY=${COPY_BINARY:-$TEST_SOURCES/../bin/copy}
+ TUTORIAL_BINARY=${TUTORIAL_BINARY:-$TEST_SOURCES/../bin/tutorial}
+ INET_BINARY=${INET_BINARY:-$TEST_SOURCES/../bin/inet}
++DUMPSPEC_BINARY=${DUMPSPEC_BINARY:-$TEST_SOURCES/../bin/dumpspec}
+ STORAGE_DRIVER=${STORAGE_DRIVER:-vfs}
+ PATH=$(dirname ${BASH_SOURCE})/../bin:${PATH}
+ OCI=${CI_DESIRED_RUNTIME:-$(${BUILDAH_BINARY} info --format '{{.host.OCIRuntime}}' || command -v runc || command -v crun)}
+diff --git a/tests/tmt/system.fmf b/tests/tmt/system.fmf
+index f34f4d920f0..49b36193aad 100644
+--- a/tests/tmt/system.fmf
++++ b/tests/tmt/system.fmf
+@@ -9,6 +9,7 @@ environment:
+     INET_BINARY: /usr/bin/buildah-inet
+     COPY_BINARY: /usr/bin/buildah-copy
+     TUTORIAL_BINARY: /usr/bin/buildah-tutorial
++    DUMPSPEC_BINARY: /usr/bin/buildah-dumpspec
+     TMPDIR: /var/tmp
+ 
+ /local/root:
+
+From b3632e82fbff068bcb64d0de6a0cc25e2f2865e5 Mon Sep 17 00:00:00 2001
+From: Nalin Dahyabhai <nalin@redhat.com>
+Date: Tue, 22 Apr 2025 17:35:11 -0400
+Subject: [PATCH 3/5] runUsingRuntime: use named constants for runtime states
+
+Use the named constants for the status values that runtimes can report
+to us when we run them with the "state" command.
+
+Signed-off-by: Nalin Dahyabhai <nalin@redhat.com>
+---
+ run_common.go | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/run_common.go b/run_common.go
+index a3d382f28cb..3448c472509 100644
+--- a/run_common.go
++++ b/run_common.go
+@@ -696,8 +696,9 @@ func runUsingRuntime(options RunOptions, configureNetwork bool, moreCreateArgs [
+ 			return 1, fmt.Errorf("parsing container state %q from %s: %w", string(stateOutput), runtime, err)
+ 		}
+ 		switch state.Status {
+-		case "running":
+-		case "stopped":
++		case specs.StateCreating, specs.StateCreated, specs.StateRunning:
++			// all fine
++		case specs.StateStopped:
+ 			atomic.StoreUint32(&stopped, 1)
+ 		default:
+ 			return 1, fmt.Errorf("container status unexpectedly changed to %q", state.Status)
+
+From 0c94ebd8a727dad41514bb8d95d08d07c33c6e15 Mon Sep 17 00:00:00 2001
+From: Nalin Dahyabhai <nalin@redhat.com>
+Date: Thu, 17 Apr 2025 16:25:13 -0400
+Subject: [PATCH 4/5] buildah-build(1): clarify that --cgroup-parent affects
+ RUN instructions
+
+Tweak the wording that describes the effects of --cgroup-parent to be
+clear that it only affects handling of RUN instructions.
+
+Signed-off-by: Nalin Dahyabhai <nalin@redhat.com>
+---
+ docs/buildah-build.1.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/docs/buildah-build.1.md b/docs/buildah-build.1.md
+index 55cc680a619..72e650c72aa 100644
+--- a/docs/buildah-build.1.md
++++ b/docs/buildah-build.1.md
+@@ -189,7 +189,7 @@ The default certificates directory is _/etc/containers/certs.d_.
+ 
+ **--cgroup-parent**=""
+ 
+-Path to cgroups under which the cgroup for the container will be created. If the path is not absolute, the path is considered to be relative to the cgroups path of the init process. Cgroups will be created if they do not already exist.
++Path to cgroups under which the cgroup for RUN instructions will be created. If the path is not absolute, the path is considered to be relative to the cgroups path of the init process. Cgroups will be created if they do not already exist.
+ 
+ **--cgroupns** *how*
+ 
+
+From 0a711b3d02971ac441920e785ed474317c181661 Mon Sep 17 00:00:00 2001
+From: Nalin Dahyabhai <nalin@redhat.com>
+Date: Thu, 17 Apr 2025 14:41:54 -0400
+Subject: [PATCH 5/5] CI: run integration tests on Fedora with both crun and
+ runc
+
+Run integration tests (both as root and rootless) with both crun and
+runc on Fedora, to help ensure that we can use either.
+
+Pick up changes from main to test on Fedora 41/42 instead of 40/41, and
+golang 1.23.3 instead of 1.23.
+
+Signed-off-by: Nalin Dahyabhai <nalin@redhat.com>
+---
+ .cirrus.yml | 95 ++++++++++++++++++++++++++++++++++++++++-------------
+ 1 file changed, 72 insertions(+), 23 deletions(-)
+
+diff --git a/.cirrus.yml b/.cirrus.yml
+index 4a7bc5c17a0..6195c8a5674 100644
+--- a/.cirrus.yml
++++ b/.cirrus.yml
+@@ -6,7 +6,7 @@ env:
+     #### Global variables used for all tasks
+     ####
+     # Name of the ultimate destination branch for this CI run, PR or post-merge.
+-    DEST_BRANCH: "main"
++    DEST_BRANCH: "release-1.40"
+     GOPATH: "/var/tmp/go"
+     GOSRC: "${GOPATH}/src/github.com/containers/buildah"
+     GOCACHE: "/tmp/go-build"
+@@ -22,18 +22,20 @@ env:
+     IN_PODMAN: 'false'
+     # root or rootless
+     PRIV_NAME: root
++    # default "mention the $BUILDAH_RUNTIME in the task alias, with initial whitespace" value
++    RUNTIME_N: ""
+ 
+     ####
+     #### Cache-image names to test with
+     ####
+     # GCE project where images live
+     IMAGE_PROJECT: "libpod-218412"
+-    FEDORA_NAME: "fedora-41"
+-    PRIOR_FEDORA_NAME: "fedora-40"
++    FEDORA_NAME: "fedora-42"
++    PRIOR_FEDORA_NAME: "fedora-41"
+     DEBIAN_NAME: "debian-13"
+ 
+     # Image identifiers
+-    IMAGE_SUFFIX: "c20250324t111922z-f41f40d13"
++    IMAGE_SUFFIX: "c20250422t130822z-f42f41d13"
+     FEDORA_CACHE_IMAGE_NAME: "fedora-${IMAGE_SUFFIX}"
+     PRIOR_FEDORA_CACHE_IMAGE_NAME: "prior-fedora-${IMAGE_SUFFIX}"
+     DEBIAN_CACHE_IMAGE_NAME: "debian-${IMAGE_SUFFIX}"
+@@ -122,7 +124,7 @@ vendor_task:
+ 
+     # Runs within Cirrus's "community cluster"
+     container:
+-        image: docker.io/library/golang:1.23
++        image: docker.io/library/golang:1.23.3
+         cpu: 1
+         memory: 1
+ 
+@@ -196,7 +198,7 @@ conformance_task:
+ 
+ 
+ integration_task:
+-    name: "Integration $DISTRO_NV w/ $STORAGE_DRIVER"
++    name: "Integration $DISTRO_NV$RUNTIME_N w/ $STORAGE_DRIVER"
+     alias: integration
+     skip: *not_build_docs
+     depends_on: *smoke_vendor
+@@ -207,11 +209,26 @@ integration_task:
+             DISTRO_NV: "${FEDORA_NAME}"
+             IMAGE_NAME: "${FEDORA_CACHE_IMAGE_NAME}"
+             STORAGE_DRIVER: 'vfs'
+-        # Disabled until we update to f41/42 as f40 does not have go 1.22
+-        # - env:
+-        #     DISTRO_NV: "${PRIOR_FEDORA_NAME}"
+-        #     IMAGE_NAME: "${PRIOR_FEDORA_CACHE_IMAGE_NAME}"
+-        #     STORAGE_DRIVER: 'vfs'
++            BUILDAH_RUNTIME: crun
++            RUNTIME_N: " using crun"
++        - env:
++            DISTRO_NV: "${FEDORA_NAME}"
++            IMAGE_NAME: "${FEDORA_CACHE_IMAGE_NAME}"
++            STORAGE_DRIVER: 'vfs'
++            BUILDAH_RUNTIME: runc
++            RUNTIME_N: " using runc"
++        - env:
++            DISTRO_NV: "${PRIOR_FEDORA_NAME}"
++            IMAGE_NAME: "${PRIOR_FEDORA_CACHE_IMAGE_NAME}"
++            STORAGE_DRIVER: 'vfs'
++            BUILDAH_RUNTIME: crun
++            RUNTIME_N: " using crun"
++        - env:
++            DISTRO_NV: "${PRIOR_FEDORA_NAME}"
++            IMAGE_NAME: "${PRIOR_FEDORA_CACHE_IMAGE_NAME}"
++            STORAGE_DRIVER: 'vfs'
++            BUILDAH_RUNTIME: runc
++            RUNTIME_N: " using runc"
+         - env:
+             DISTRO_NV: "${DEBIAN_NAME}"
+             IMAGE_NAME: "${DEBIAN_CACHE_IMAGE_NAME}"
+@@ -221,11 +238,26 @@ integration_task:
+             DISTRO_NV: "${FEDORA_NAME}"
+             IMAGE_NAME: "${FEDORA_CACHE_IMAGE_NAME}"
+             STORAGE_DRIVER: 'overlay'
+-        # Disabled until we update to f41/42 as f40 does not have go 1.22
+-        # - env:
+-        #     DISTRO_NV: "${PRIOR_FEDORA_NAME}"
+-        #     IMAGE_NAME: "${PRIOR_FEDORA_CACHE_IMAGE_NAME}"
+-        #     STORAGE_DRIVER: 'overlay'
++            BUILDAH_RUNTIME: crun
++            RUNTIME_N: " using crun"
++        - env:
++            DISTRO_NV: "${FEDORA_NAME}"
++            IMAGE_NAME: "${FEDORA_CACHE_IMAGE_NAME}"
++            STORAGE_DRIVER: 'overlay'
++            BUILDAH_RUNTIME: runc
++            RUNTIME_N: " using runc"
++        - env:
++            DISTRO_NV: "${PRIOR_FEDORA_NAME}"
++            IMAGE_NAME: "${PRIOR_FEDORA_CACHE_IMAGE_NAME}"
++            STORAGE_DRIVER: 'overlay'
++            BUILDAH_RUNTIME: crun
++            RUNTIME_N: " using crun"
++        - env:
++            DISTRO_NV: "${PRIOR_FEDORA_NAME}"
++            IMAGE_NAME: "${PRIOR_FEDORA_CACHE_IMAGE_NAME}"
++            STORAGE_DRIVER: 'overlay'
++            BUILDAH_RUNTIME: runc
++            RUNTIME_N: " using runc"
+         - env:
+             DISTRO_NV: "${DEBIAN_NAME}"
+             IMAGE_NAME: "${DEBIAN_CACHE_IMAGE_NAME}"
+@@ -255,7 +287,7 @@ integration_task:
+         golang_version_script: '$GOSRC/$SCRIPT_BASE/logcollector.sh golang'
+ 
+ integration_rootless_task:
+-    name: "Integration rootless $DISTRO_NV w/ $STORAGE_DRIVER"
++    name: "Integration rootless $DISTRO_NV$RUNTIME_N w/ $STORAGE_DRIVER"
+     alias: integration_rootless
+     skip: *not_build_docs
+     depends_on: *smoke_vendor
+@@ -268,12 +300,29 @@ integration_rootless_task:
+             IMAGE_NAME: "${FEDORA_CACHE_IMAGE_NAME}"
+             STORAGE_DRIVER: 'overlay'
+             PRIV_NAME: rootless
+-        # Disabled until we update to f40/41 as f39 does not have go 1.22
+-        # - env:
+-        #     DISTRO_NV: "${PRIOR_FEDORA_NAME}"
+-        #     IMAGE_NAME: "${PRIOR_FEDORA_CACHE_IMAGE_NAME}"
+-        #     STORAGE_DRIVER: 'overlay'
+-        #     PRIV_NAME: rootless
++            BUILDAH_RUNTIME: runc
++            RUNTIME_N: " using runc"
++        - env:
++            DISTRO_NV: "${FEDORA_NAME}"
++            IMAGE_NAME: "${FEDORA_CACHE_IMAGE_NAME}"
++            STORAGE_DRIVER: 'overlay'
++            PRIV_NAME: rootless
++            BUILDAH_RUNTIME: crun
++            RUNTIME_N: " using crun"
++        - env:
++            DISTRO_NV: "${PRIOR_FEDORA_NAME}"
++            IMAGE_NAME: "${PRIOR_FEDORA_CACHE_IMAGE_NAME}"
++            STORAGE_DRIVER: 'overlay'
++            PRIV_NAME: rootless
++            BUILDAH_RUNTIME: runc
++            RUNTIME_N: " using runc"
++        - env:
++            DISTRO_NV: "${PRIOR_FEDORA_NAME}"
++            IMAGE_NAME: "${PRIOR_FEDORA_CACHE_IMAGE_NAME}"
++            STORAGE_DRIVER: 'overlay'
++            PRIV_NAME: rootless
++            BUILDAH_RUNTIME: crun
++            RUNTIME_N: " using crun"
+         - env:
+             DISTRO_NV: "${DEBIAN_NAME}"
+             IMAGE_NAME: "${DEBIAN_CACHE_IMAGE_NAME}"

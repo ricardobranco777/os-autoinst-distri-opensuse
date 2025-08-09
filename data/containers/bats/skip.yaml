@@ -33,6 +33,8 @@ buildah:
     BATS_SKIP_USER:
   sle-16.0:
     BATS_PATCHES:
+    - 5885
+    - 6201
     - 6226
     BATS_SKIP:
     BATS_SKIP_ROOT: bud

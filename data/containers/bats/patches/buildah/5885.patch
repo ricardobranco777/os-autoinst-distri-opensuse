@@ -1,0 +1,250 @@
+From c54e43a9fb59e4589efa5ecf9bce2ef712f6fea7 Mon Sep 17 00:00:00 2001
+From: Lokesh Mandvekar <lsm5@fedoraproject.org>
+Date: Tue, 4 Mar 2025 16:22:48 +0530
+Subject: [PATCH] [skip-ci] TMT: system tests
+
+This commit adds TMT jobs for system tests triggered via Packit for
+all active Fedora and CentOS Stream releases on x86_64.
+
+TODO: enable aarch64 tests.
+
+Official Fedora and CentOS Stream spec and gating test configs can be
+synced from upstream by Packit, effectively upstreaming almost all
+mainteenance.
+
+Signed-off-by: Lokesh Mandvekar <lsm5@fedoraproject.org>
+---
+ .fmf/version         |  1 +
+ .packit.yaml         | 50 ++++++++++++++++++++++++++++++++++++++++++--
+ plans/main.fmf       | 34 ++++++++++++++++++++++++++++++
+ rpm/buildah.spec     |  6 +++++-
+ rpm/gating.yaml      | 16 ++++++++++++++
+ tests/tmt/system.fmf | 17 +++++++++++++++
+ tests/tmt/system.sh  | 18 ++++++++++++++++
+ 7 files changed, 139 insertions(+), 3 deletions(-)
+ create mode 100644 .fmf/version
+ create mode 100644 plans/main.fmf
+ create mode 100644 rpm/gating.yaml
+ create mode 100644 tests/tmt/system.fmf
+ create mode 100644 tests/tmt/system.sh
+
+diff --git a/.fmf/version b/.fmf/version
+new file mode 100644
+index 00000000000..d00491fd7e5
+--- /dev/null
++++ b/.fmf/version
+@@ -0,0 +1 @@
++1
+diff --git a/.packit.yaml b/.packit.yaml
+index 1c751afc5bd..716d654ce75 100644
+--- a/.packit.yaml
++++ b/.packit.yaml
+@@ -5,6 +5,27 @@
+ downstream_package_name: buildah
+ upstream_tag_template: v{version}
+ 
++# These files get synced from upstream to downstream (Fedora / CentOS Stream) on every
++# propose-downstream job. This is done so tests maintained upstream can be run
++# downstream in Zuul CI and Bodhi.
++# Ref: https://packit.dev/docs/configuration#files_to_sync
++files_to_sync:
++  - src: rpm/gating.yaml
++    dest: gating.yaml
++    delete: true
++  - src: plans/
++    dest: plans/
++    delete: true
++    mkpath: true
++  - src: tests/tmt/
++    dest: tests/tmt/
++    delete: true
++    mkpath: true
++  - src: .fmf/
++    dest: .fmf/
++    delete: true
++  - .packit.yaml
++
+ packages:
+   buildah-fedora:
+     pkg_tool: fedpkg
+@@ -25,7 +46,7 @@ jobs:
+     notifications: &copr_build_failure_notification
+       failure_comment:
+         message: "Ephemeral COPR build failed. @containers/packit-build please check."
+-    targets:
++    targets: &fedora_copr_targets
+       - fedora-all-x86_64
+       - fedora-all-aarch64
+     enable_net: true
+@@ -47,7 +68,7 @@ jobs:
+     trigger: pull_request
+     packages: [buildah-centos]
+     notifications: *copr_build_failure_notification
+-    targets:
++    targets: &centos_copr_targets
+       - centos-stream-9-x86_64
+       - centos-stream-9-aarch64
+       - centos-stream-10-x86_64
+@@ -66,6 +87,31 @@ jobs:
+     project: podman-next
+     enable_net: true
+ 
++  # Tests on Fedora for main branch PRs
++  - job: tests
++    trigger: pull_request
++    packages: [buildah-fedora]
++    targets: &fedora_copr_test_targets
++      - fedora-all-x86_64
++    tf_extra_params:
++      environments:
++        - artifacts:
++          - type: repository-file
++            id: https://copr.fedorainfracloud.org/coprs/rhcontainerbot/podman-next/repo/fedora-$releasever/rhcontainerbot-podman-next-fedora-$releasever.repo
++
++  # Tests on CentOS Stream for main branch PRs
++  - job: tests
++    trigger: pull_request
++    packages: [buildah-centos]
++    targets: &centos_copr_test_targets
++      - centos-stream-9-x86_64
++      - centos-stream-10-x86_64
++    tf_extra_params:
++      environments:
++        - artifacts:
++          - type: repository-file
++            id: https://copr.fedorainfracloud.org/coprs/rhcontainerbot/podman-next/repo/centos-stream-$releasever/rhcontainerbot-podman-next-centos-stream-$releasever.repo
++
+   # Sync to Fedora
+   - job: propose_downstream
+     trigger: release
+diff --git a/plans/main.fmf b/plans/main.fmf
+new file mode 100644
+index 00000000000..b982e76db2a
+--- /dev/null
++++ b/plans/main.fmf
+@@ -0,0 +1,34 @@
++discover:
++    how: fmf
++
++execute:
++    how: tmt
++
++prepare:
++    - when: distro == centos-stream or distro == rhel
++      how: shell
++      script: |
++        dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-$(rpm --eval '%{?rhel}').noarch.rpm
++        dnf -y config-manager --set-enabled epel
++      order: 10
++    - when: initiator == packit
++      how: shell
++      script: |
++        COPR_REPO_FILE="/etc/yum.repos.d/*podman-next*.repo"
++        if compgen -G $COPR_REPO_FILE > /dev/null; then
++            sed -i -n '/^priority=/!p;$apriority=1' $COPR_REPO_FILE
++        fi
++        dnf -y upgrade --allowerasing
++      order: 20
++
++provision:
++    how: artemis
++    hardware:
++        memory: ">= 16 GB"
++        cpu:
++            cores: ">= 4"
++            threads: ">=8"
++        disk:
++            - size: ">= 512 GB"
++
++
+diff --git a/rpm/buildah.spec b/rpm/buildah.spec
+index 8be13c75143..fca37117a2c 100644
+--- a/rpm/buildah.spec
++++ b/rpm/buildah.spec
+@@ -79,12 +79,16 @@ or
+ * save container's root file system layer to create a new image
+ * delete a working container or an image
+ 
++# This subpackage is only intended for CI testing.
++# Not meant for end user/customer usage.
+ %package tests
+ Summary: Tests for %{name}
+ 
+ Requires: %{name} = %{epoch}:%{version}-%{release}
+-%if %{defined fedora}
++%if %{defined bats_epel}
+ Requires: bats
++%else
++Recommends: bats
+ %endif
+ Requires: bzip2
+ Requires: podman
+diff --git a/rpm/gating.yaml b/rpm/gating.yaml
+new file mode 100644
+index 00000000000..1fb3172f4d6
+--- /dev/null
++++ b/rpm/gating.yaml
+@@ -0,0 +1,16 @@
++--- !Policy
++product_versions:
++  - fedora-*
++decision_contexts:
++  - bodhi_update_push_stable
++  - bodhi_update_push_testing
++subject_type: koji_build
++rules:
++  - !PassingTestCaseRule {test_case_name: fedora-ci.koji-build.tier0.functional}
++
++--- !Policy
++product_versions:
++  - rhel-*
++decision_context: osci_compose_gate
++rules:
++  - !PassingTestCaseRule {test_case_name: osci.brew-build.tier0.functional}
+diff --git a/tests/tmt/system.fmf b/tests/tmt/system.fmf
+new file mode 100644
+index 00000000000..f34f4d920f0
+--- /dev/null
++++ b/tests/tmt/system.fmf
+@@ -0,0 +1,17 @@
++require:
++    - buildah-tests
++    - git-daemon
++    - slirp4netns
++
++environment:
++    BUILDAH_BINARY: /usr/bin/buildah
++    IMGTYPE_BINARY: /usr/bin/buildah-imgtype
++    INET_BINARY: /usr/bin/buildah-inet
++    COPY_BINARY: /usr/bin/buildah-copy
++    TUTORIAL_BINARY: /usr/bin/buildah-tutorial
++    TMPDIR: /var/tmp
++
++/local/root:
++    summary: System test
++    test: bash ./system.sh
++    duration: 60m
+diff --git a/tests/tmt/system.sh b/tests/tmt/system.sh
+new file mode 100644
+index 00000000000..73553aafd86
+--- /dev/null
++++ b/tests/tmt/system.sh
+@@ -0,0 +1,18 @@
++#!/usr/bin/env bash
++
++set -exo pipefail
++
++uname -r
++
++rpm -q \
++    aardvark-dns \
++    buildah \
++    buildah-tests \
++    conmon \
++    container-selinux \
++    containers-common \
++    crun \
++    netavark \
++    systemd
++
++bats /usr/share/buildah/test/system
