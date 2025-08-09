@@ -337,7 +337,7 @@ index bd83d2b916b..27d6069c2d5 100644
 -from alpine
 -run cat /proc/self/cgroup
 +FROM alpine
-+RUN .linux.cgroupsPath
++RUN cat /proc/self/cgroup
  _EOF
  
    # with cgroup-parent
