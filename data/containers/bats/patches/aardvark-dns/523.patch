@@ -1,0 +1,476 @@
+From 5db65bd17c07272292869eb154ebd511c83d6e36 Mon Sep 17 00:00:00 2001
+From: Paul Holzinger <pholzing@redhat.com>
+Date: Wed, 9 Oct 2024 19:02:16 +0200
+Subject: [PATCH 1/2] coredns: forward names with no ndots as well
+
+Docker does this and there might be local names and a local resolver
+that otherwise cannot be resolved.
+
+Fixes https://issues.redhat.com/browse/RHEL-61873
+
+Signed-off-by: Paul Holzinger <pholzing@redhat.com>
+---
+ src/dns/coredns.rs                  |  1 -
+ test/100-basic-name-resolution.bats | 28 +++++++++++++++++++++++++---
+ 2 files changed, 25 insertions(+), 4 deletions(-)
+
+diff --git a/src/dns/coredns.rs b/src/dns/coredns.rs
+index 52ec8fe1..9722dc71 100644
+--- a/src/dns/coredns.rs
++++ b/src/dns/coredns.rs
+@@ -202,7 +202,6 @@ impl CoreDns {
+         if data.no_proxy
+             || backend.ctr_is_internal(&src_address.ip())
+             || request_name_string.ends_with(&backend.search_domain)
+-            || request_name_string.matches('.').count() == 1
+         {
+             let mut nx_message = req.clone();
+             nx_message.set_response_code(ResponseCode::NXDomain);
+diff --git a/test/100-basic-name-resolution.bats b/test/100-basic-name-resolution.bats
+index 435956e6..5ed8bf79 100644
+--- a/test/100-basic-name-resolution.bats
++++ b/test/100-basic-name-resolution.bats
+@@ -5,6 +5,17 @@
+ 
+ load helpers
+ 
++
++DNSMASQ_PID=
++function teardown() {
++	if [[ -n "$DNSMASQ_PID" ]]; then
++		kill -9 $DNSMASQ_PID
++		# for debugging
++		cat $AARDVARK_TMPDIR/dnsmasq.log
++	fi
++	basic_teardown
++}
++
+ # custom DNS server is set to `127.0.0.255` which is invalid DNS server
+ # hence all the external request must fail, this test is expected to fail
+ # with exit code 124
+@@ -116,18 +127,29 @@ load helpers
+ 	assert "$output" !~ "WARNING: recursion requested but not available"
+ }
+ 
+-@test "basic container - ndots incomplete bad entry must NXDOMAIN instead of forwarding and timing out" {
++@test "basic container - ndots incomplete entry" {
+ 	setup_slirp4netns
+ 
++	# launch dnsmasq to run a local server with a single name without domain part
++	# we cannot use run_is_host_netns to run in the background
++	nsenter -m -n -t "$HOST_NS_PID" dnsmasq --no-daemon --conf-file=/dev/null --interface=lo --bind-interfaces \
++		--address=/testname/192.168.0.1 --no-resolv --no-hosts &>"$AARDVARK_TMPDIR/dnsmasq.log" 3>/dev/null &
++	DNSMASQ_PID=$!
++
+ 	subnet_a=$(random_subnet 5)
+-	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" aliases='"a1", "1a"'
++	# ensure we are using dnsmasq via custom_dns_server
++	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" \
++		subnet="$subnet_a" aliases='"a1", "1a"' custom_dns_server='"127.0.0.1"'
+ 	config_a1=$config
+ 	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
+ 	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
+ 	create_container "$config_a1"
+ 	a1_pid=$CONTAINER_NS_PID
+ 	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "bone" "$gw"
+-	assert "$output" =~ "NXDOMAIN"
++	assert "$output" =~ "REFUSED" "dnsmasq returns REFUSED"
++
++	run_in_container_netns "$a1_pid" "dig" "+short" "testname" "@$gw"
++	assert "192.168.0.1" "should resolve local name from external nameserver (dnsmasq)"
+ }
+ 
+ @test "basic container - dns itself on container with ipaddress v6" {
+
+From e6ce71066026232b5d9f0007e7440b45118ed997 Mon Sep 17 00:00:00 2001
+From: Paul Holzinger <pholzing@redhat.com>
+Date: Mon, 28 Oct 2024 18:47:07 +0100
+Subject: [PATCH 2/2] test: use dnsmasq over slirp4netns
+
+Many tests used slirp4netns to connect to an outside nameserver, this
+network dependency is not very good and can flake/fail at any given
+time. Instead we can run our own local fake "upstream" resolver with
+dnsmasq to allow it to resolve some example names.
+
+Signed-off-by: Paul Holzinger <pholzing@redhat.com>
+---
+ test/100-basic-name-resolution.bats | 85 +++++++++++++++--------------
+ test/200-two-networks.bats          | 24 ++++----
+ test/300-three-networks.bats        |  2 +
+ test/dnsmasq.conf                   | 19 +++++++
+ test/helpers.bash                   | 37 +++++--------
+ 5 files changed, 91 insertions(+), 76 deletions(-)
+ create mode 100644 test/dnsmasq.conf
+
+diff --git a/test/100-basic-name-resolution.bats b/test/100-basic-name-resolution.bats
+index 5ed8bf79..80d9d5fe 100644
+--- a/test/100-basic-name-resolution.bats
++++ b/test/100-basic-name-resolution.bats
+@@ -6,12 +6,10 @@
+ load helpers
+ 
+ 
+-DNSMASQ_PID=
++HELPER_PID=
+ function teardown() {
+-	if [[ -n "$DNSMASQ_PID" ]]; then
+-		kill -9 $DNSMASQ_PID
+-		# for debugging
+-		cat $AARDVARK_TMPDIR/dnsmasq.log
++	if [[ -n "$HELPER_PID" ]]; then
++		kill -9 $HELPER_PID
+ 	fi
+ 	basic_teardown
+ }
+@@ -20,7 +18,7 @@ function teardown() {
+ # hence all the external request must fail, this test is expected to fail
+ # with exit code 124
+ @test "basic container - dns itself (custom bad dns server)" {
+-	setup_slirp4netns
++	setup_dnsmasq
+ 
+ 	subnet_a=$(random_subnet 5)
+ 	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"127.0.0.255"' aliases='"a1", "1a"'
+@@ -35,17 +33,23 @@ function teardown() {
+ 	# contain unexpected warning.
+ 	assert "$output" !~ "WARNING: recursion requested but not available"
+ 
+-        # custom dns server is set to 3.3.3.3 which is not a valid DNS server so external DNS request must fail
+-	expected_rc=124 run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw"
++    # custom dns server is set to 127.0.0.255 which is not a valid DNS server so external DNS request must fail
++	expected_rc=124 run_in_container_netns "$a1_pid" "dig" "+short" "$TEST_DOMAIN" "@$gw"
+ }
+ 
+ # custom DNS server is set to `8.8.8.8, 1.1.1.1` which is valid DNS server
+ # hence all the external request must paas.
+ @test "basic container - dns itself (custom good dns server)" {
+-	setup_slirp4netns
++	setup_dnsmasq
++
++	# launch dnsmasq to run a second local server with a unique name so we know custom_dns_server works
++	run_in_host_netns dnsmasq --conf-file=/dev/null --pid-file="$AARDVARK_TMPDIR/dnsmasq2.pid" \
++		--except-interface=lo --listen-address=127.1.1.53 --bind-interfaces  \
++		--address=/unique-name.local/192.168.0.1 --no-resolv --no-hosts
++	HELPER_PID=$(cat $AARDVARK_TMPDIR/dnsmasq2.pid)
+ 
+ 	subnet_a=$(random_subnet 5)
+-	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"8.8.8.8","1.1.1.1"' aliases='"a1", "1a"'
++	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"127.1.1.53"' aliases='"a1", "1a"'
+ 
+ 	config_a1=$config
+ 	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
+@@ -59,19 +63,23 @@ function teardown() {
+ 	# contain unexpected warning.
+ 	assert "$output" !~ "WARNING: recursion requested but not available"
+ 
+-	run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw"
+-	# validate that we get an ipv4
+-	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
++	run_in_container_netns "$a1_pid" "dig" "+short" "unique-name.local" "@$gw"
++	# validate that we get the right ip
++	assert "$output" == "192.168.0.1"
+ 	# Set recursion bit is already set if requested so output must not
+ 	# contain unexpected warning.
+ 	assert "$output" !~ "WARNING: recursion requested but not available"
+ }
+ 
+ @test "basic container - dns itself (bad and good should fall back)" {
+-	setup_slirp4netns
++	setup_dnsmasq
++
++	# using sh-exec to keep the udp query hanging for at least 3 seconds
++	nsenter -m -n -t $HOST_NS_PID nc -l -u 127.5.5.5 53 --sh-exec "sleep 3" 3>/dev/null &
++	HELPER_PID=$!
+ 
+ 	subnet_a=$(random_subnet 5)
+-	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"192.168.0.0", "10.0.2.3"' aliases='"a1", "1a"'
++	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"127.5.5.5", "127.0.0.1"' aliases='"a1", "1a"'
+ 	config_a1=$config
+ 	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
+ 	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
+@@ -79,14 +87,18 @@ function teardown() {
+ 	a1_pid=$CONTAINER_NS_PID
+ 
+     # first custom server is wrong but second server should work
+-	run_in_container_netns "$a1_pid" "dig" "google.com" "@$gw"
++	run_in_container_netns "$a1_pid" "dig" "$TEST_DOMAIN" "@$gw"
+ 	assert "$output" =~ "Query time: [23][0-9]{3} msec" "timeout should be 2.5s so request should then work shortly after (udp)"
+-	run_in_container_netns "$a1_pid" "dig" +tcp "google.com" "@$gw"
++
++	# Now the same with tcp.
++	nsenter -m -n -t $HOST_NS_PID nc -l 127.5.5.5 53 --sh-exec "sleep 3" 3>/dev/null &
++	HELPER_PID=$!
++	run_in_container_netns "$a1_pid" "dig" +tcp "$TEST_DOMAIN" "@$gw"
+ 	assert "$output" =~ "Query time: [23][0-9]{3} msec" "timeout should be 2.5s so request should then work shortly after (tcp)"
+ }
+ 
+ @test "basic container - dns itself custom" {
+-	setup_slirp4netns
++	setup_dnsmasq
+ 
+ 	subnet_a=$(random_subnet 5)
+ 	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" aliases='"a1", "1a"'
+@@ -106,7 +118,7 @@ function teardown() {
+ 	assert "$ip_a1"
+ 
+ 
+-	run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw"
++	run_in_container_netns "$a1_pid" "dig" "+short" "$TEST_DOMAIN" "@$gw"
+ 	# validate that we get an ipv4
+ 	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
+ 	# Set recursion bit is already set if requested so output must not
+@@ -116,7 +128,7 @@ function teardown() {
+ 	# check TCP support for forwarding
+ 	# note there is no guarantee that the forwarding is happening via TCP though
+ 	# TODO add custom dns record that is to big for udp so we can be sure...
+-	run_in_container_netns "$a1_pid" "dig" "+tcp" "google.com" "@$gw"
++	run_in_container_netns "$a1_pid" "dig" "+tcp" "$TEST_DOMAIN" "@$gw"
+ 	# validate that we get an ipv4
+ 	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
+ 	# TODO This is not working on rhel/centos 9 as the dig version there doesn't print the line,
+@@ -128,32 +140,25 @@ function teardown() {
+ }
+ 
+ @test "basic container - ndots incomplete entry" {
+-	setup_slirp4netns
+-
+-	# launch dnsmasq to run a local server with a single name without domain part
+-	# we cannot use run_is_host_netns to run in the background
+-	nsenter -m -n -t "$HOST_NS_PID" dnsmasq --no-daemon --conf-file=/dev/null --interface=lo --bind-interfaces \
+-		--address=/testname/192.168.0.1 --no-resolv --no-hosts &>"$AARDVARK_TMPDIR/dnsmasq.log" 3>/dev/null &
+-	DNSMASQ_PID=$!
++	setup_dnsmasq
+ 
+ 	subnet_a=$(random_subnet 5)
+-	# ensure we are using dnsmasq via custom_dns_server
+ 	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" \
+-		subnet="$subnet_a" aliases='"a1", "1a"' custom_dns_server='"127.0.0.1"'
++		subnet="$subnet_a" aliases='"a1", "1a"'
+ 	config_a1=$config
+ 	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
+ 	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
+ 	create_container "$config_a1"
+ 	a1_pid=$CONTAINER_NS_PID
+-	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "bone" "$gw"
+-	assert "$output" =~ "REFUSED" "dnsmasq returns REFUSED"
++	run_in_container_netns "$a1_pid" "dig" "someshortname" "@$gw"
++	assert "$output" =~ "status: REFUSED" "dnsmasq returns REFUSED"
+ 
+ 	run_in_container_netns "$a1_pid" "dig" "+short" "testname" "@$gw"
+-	assert "192.168.0.1" "should resolve local name from external nameserver (dnsmasq)"
++	assert "198.51.100.1" "should resolve local name from external nameserver (dnsmasq)"
+ }
+ 
+ @test "basic container - dns itself on container with ipaddress v6" {
+-	setup_slirp4netns
++	setup_dnsmasq
+ 
+ 	subnet_a=$(random_subnet 6)
+ 	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" aliases='"a1", "1a"'
+@@ -168,7 +173,7 @@ function teardown() {
+ 	# contain unexpected warning.
+ 	assert "$output" !~ "WARNING: recursion requested but not available"
+ 
+-	run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw" "AAAA"
++	run_in_container_netns "$a1_pid" "dig" "+short" "$TEST_DOMAIN" "@$gw" "AAAA"
+ 	# validate that we got valid ipv6
+ 	# check that the output is not empty
+ 	assert "$lines[0]" != "" "got at least one result"
+@@ -228,7 +233,7 @@ function teardown() {
+ # Internal network, meaning no DNS servers.
+ # Hence all external requests must fail.
+ @test "basic container - internal network has no DNS" {
+-	setup_slirp4netns
++	setup_dnsmasq
+ 
+ 	subnet_a=$(random_subnet)
+ 	create_config network_name="podman1" internal=true container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"1.1.1.1","8.8.8.8"' aliases='"a1", "1a"'
+@@ -245,14 +250,14 @@ function teardown() {
+ 	assert "$output" !~ "WARNING: recursion requested but not available"
+ 
+ 	# Internal network means no DNS server means this should hard-fail
+-	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "google.com" "$gw"
+-	assert "$output" =~ "Host google.com not found"
++	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "$TEST_DOMAIN" "$gw"
++	assert "$output" =~ "Host $TEST_DOMAIN not found"
+ 	assert "$output" =~ "NXDOMAIN"
+ }
+ 
+ # Internal network, but this time with IPv6. Same result as above expected.
+ @test "basic container - internal network has no DNS - ipv6" {
+-	setup_slirp4netns
++	setup_dnsmasq
+ 
+ 	subnet_a=$(random_subnet 6)
+ 	# Cloudflare and Google public anycast DNS v6 nameservers
+@@ -270,7 +275,7 @@ function teardown() {
+ 	assert "$output" !~ "WARNING: recursion requested but not available"
+ 
+ 	# Internal network means no DNS server means this should hard-fail
+-	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "google.com" "$gw"
+-	assert "$output" =~ "Host google.com not found"
++	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "$TEST_DOMAIN" "$gw"
++	assert "$output" =~ "Host $TEST_DOMAIN not found"
+ 	assert "$output" =~ "NXDOMAIN"
+ }
+diff --git a/test/200-two-networks.bats b/test/200-two-networks.bats
+index af72ede2..8b29aefb 100644
+--- a/test/200-two-networks.bats
++++ b/test/200-two-networks.bats
+@@ -6,7 +6,7 @@
+ load helpers
+ 
+ @test "two containers on different networks" {
+-	setup_slirp4netns
++	setup_dnsmasq
+ 
+ 	# container a1 on subnet a
+ 	subnet_a=$(random_subnet 5)
+@@ -28,19 +28,13 @@ load helpers
+ 
+ 	# container a1 should not resolve b1 and we should get
+ 	# a NXDOMAIN
+-	dig "$a1_pid" "bone" "$a_gw"
+-	assert ""
+-	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "bone" "$a_gw"
+-	assert "$output" =~ "Host bone not found"
+-	assert "$output" =~ "NXDOMAIN"
++	run_in_container_netns "$a1_pid" "dig" "bone" "@$a_gw"
++	assert "$output" =~ "status: NXDOMAIN" "a1 resolves b2"
+ 
+ 	# container b1 should not resolve a1 and we should get
+ 	# a NXDOMAIN
+-	dig "$b1_pid" "aone" "$b_gw"
+-	assert ""
+-	expected_rc=1 run_in_container_netns "$b1_pid" "host" "-t" "ns" "aone" "$b_gw"
+-	assert "$output" =~ "Host aone not found"
+-	assert "$output" =~ "NXDOMAIN"
++	run_in_container_netns "$b1_pid" "dig" "aone" "@$b_gw"
++	assert "$output" =~ "status: NXDOMAIN" "b1 resolves a1"
+ 
+ 	# a1 should be able to resolve itself
+ 	dig "$a1_pid" "aone" "$a_gw"
+@@ -53,15 +47,17 @@ load helpers
+ 	run_in_host_netns dig +short "aone" "@$a_gw"
+ 	assert $a1_ip
+ 	#  but NOT when using b as server
+-	expected_rc=1 run_in_host_netns "host" "-t" "ns" "aone" "$b_gw"
+-	assert "$output" =~ "Host aone not found"
+-	assert "$output" =~ "NXDOMAIN"
++	run_in_host_netns "dig" "aone" "@$b_gw"
++	assert "$output" =~ "status: NXDOMAIN" "b1 listener can resolve a1"
++
+ 	# but b on network b is allowed again
+ 	run_in_host_netns dig +short "bone" "@$b_gw"
+ 	assert $b1_ip
+ }
+ 
+ @test "two subnets with isolated container and one shared" {
++	setup_dnsmasq
++
+ 	# container a1 on subnet a
+ 	subnet_a=$(random_subnet 5)
+ 	subnet_b=$(random_subnet 5)
+diff --git a/test/300-three-networks.bats b/test/300-three-networks.bats
+index ea53a509..48bb9a79 100644
+--- a/test/300-three-networks.bats
++++ b/test/300-three-networks.bats
+@@ -6,6 +6,8 @@
+ load helpers
+ 
+ @test "three networks with a connect" {
++	setup_dnsmasq
++
+ 	subnet_a=$(random_subnet 5)
+ 	subnet_b=$(random_subnet 5)
+ 
+diff --git a/test/dnsmasq.conf b/test/dnsmasq.conf
+new file mode 100644
+index 00000000..b000d3d8
+--- /dev/null
++++ b/test/dnsmasq.conf
+@@ -0,0 +1,19 @@
++interface=lo
++bind-interfaces
++
++no-hosts
++no-resolv
++
++log-queries
++
++user=
++
++# aone and bone should return NXDOMAIN, by default dnsmasq returns REFUSED
++address=/aone/
++address=/bone/
++address=/testname/198.51.100.1
++address=/testname.local/198.51.100.2
++address=/example.podman.io/198.51.100.100
++
++
++txt-record=example.podman.io,"v=spf1 a -all"
+diff --git a/test/helpers.bash b/test/helpers.bash
+index bd8faaff..02779961 100644
+--- a/test/helpers.bash
++++ b/test/helpers.bash
+@@ -10,6 +10,11 @@ AARDVARK=${AARDVARK:-$TESTSDIR/../bin/aardvark-dns}
+ # export RUST_BACKTRACE so that we get a helpful stack trace
+ export RUST_BACKTRACE=full
+ 
++# FIXME current 6.11.4 f40 kernel is broken and cannot use iptables with ipv6
++export NETAVARK_FW=nftables
++
++TEST_DOMAIN=example.podman.io
++
+ HOST_NS_PID=
+ CONTAINER_NS_PID=
+ 
+@@ -534,28 +539,16 @@ function basic_host_setup() {
+     IP_COUNT=0
+ }
+ 
+-function setup_slirp4netns() {
+-    command -v slirp4netns || die "slirp4netns not installed"
++function setup_dnsmasq() {
++    command -v dnsmasq || die "dnsmasq not installed"
+ 
+-    slirp4netns -c $HOST_NS_PID tap0 &>"$AARDVARK_TMPDIR/slirp4.log" &
+-    SLIRP4NETNS_PID=$!
++    run_in_host_netns ip link set lo up
++    run_in_host_netns dnsmasq --conf-file=$TESTSDIR/dnsmasq.conf --pid-file="$AARDVARK_TMPDIR/dnsmasq.pid"
++    DNSMASQ_PID=$(cat $AARDVARK_TMPDIR/dnsmasq.pid)
+ 
+-    # create new resolv.conf with slirp4netns dns
+-    echo "nameserver 10.0.2.3" >"$AARDVARK_TMPDIR/resolv.conf"
++    # create new resolv.conf with dnsmasq dns
++    echo "nameserver 127.0.0.1" >"$AARDVARK_TMPDIR/resolv.conf"
+     run_in_host_netns mount --bind "$AARDVARK_TMPDIR/resolv.conf" /etc/resolv.conf
+-
+-    local timeout=6
+-    while [[ $timeout -gt 1 ]]; do
+-        run_in_host_netns ip addr
+-        if [[ "$output" =~ "tap0" ]]; then
+-            return
+-        fi
+-        sleep 1
+-        let timeout=$timeout-1
+-    done
+-
+-    cat "$AARDVARK_TMPDIR/slirp4.log"
+-    die "Timed out waiting for slirp4netns to start"
+ }
+ 
+ function basic_teardown() {
+@@ -565,9 +558,9 @@ function basic_teardown() {
+         kill -9 "${CONTAINER_NS_PIDS[$i]}"
+     done
+ 
+-    if [[ -n "$SLIRP4NETNS_PID" ]]; then
+-        kill -9 $SLIRP4NETNS_PID
+-        SLIRP4NETNS_PID=""
++    if [[ -n "$DNSMASQ_PID" ]]; then
++        kill -9 $DNSMASQ_PID
++        DNSMASQ_PID=""
+     fi
+ 
+     # Finally kill the host netns

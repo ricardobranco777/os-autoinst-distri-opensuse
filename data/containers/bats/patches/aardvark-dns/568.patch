@@ -1,0 +1,28 @@
+From e4db2449770788e1e3cc84b39fbe442a4f420926 Mon Sep 17 00:00:00 2001
+From: Paul Holzinger <pholzing@redhat.com>
+Date: Mon, 10 Feb 2025 18:44:59 +0100
+Subject: [PATCH] test: do not force nftables
+
+We don't care about the driver used for out testing so just stick with
+the package default. I did add this only to get passing test locally
+back then and didn't actually intend to commit this at all.
+
+Signed-off-by: Paul Holzinger <pholzing@redhat.com>
+---
+ test/helpers.bash | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/test/helpers.bash b/test/helpers.bash
+index 02779961..1363cea3 100644
+--- a/test/helpers.bash
++++ b/test/helpers.bash
+@@ -10,9 +10,6 @@ AARDVARK=${AARDVARK:-$TESTSDIR/../bin/aardvark-dns}
+ # export RUST_BACKTRACE so that we get a helpful stack trace
+ export RUST_BACKTRACE=full
+ 
+-# FIXME current 6.11.4 f40 kernel is broken and cannot use iptables with ipv6
+-export NETAVARK_FW=nftables
+-
+ TEST_DOMAIN=example.podman.io
+ 
+ HOST_NS_PID=

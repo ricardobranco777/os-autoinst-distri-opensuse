@@ -1,6 +1,8 @@
 aardvark-dns:
   # Note on patches:
   # https://github.com/containers/aardvark-dns/pull/519 is needed for 100-basic-name-resolution
+  # https://github.com/containers/aardvark-dns/pull/523 is needed to use dnsmasq over slirp4netns
+  # https://github.com/containers/aardvark-dns/pull/568 is needed to fix PR#523
   # https://github.com/containers/aardvark-dns/pull/619 is needed for dnsmasq issue
   opensuse-Tumbleweed:
     BATS_PATCHES:
@@ -13,15 +15,24 @@ aardvark-dns:
   sle-15-SP7:
     BATS_PATCHES:
     - 519
-    BATS_SKIP: 100-basic-name-resolution
+    - 523
+    - 568
+    - 619
+    BATS_SKIP:
   sle-15-SP6:
     BATS_PATCHES:
     - 519
-    BATS_SKIP: 100-basic-name-resolution
+    - 523
+    - 568
+    - 619
+    BATS_SKIP:
   sle-15-SP5:
     BATS_PATCHES:
     - 519
-    BATS_SKIP: 100-basic-name-resolution
+    - 523
+    - 568
+    - 619
+    BATS_SKIP:
 buildah:
   # Note on patches:
   # https://github.com/containers/buildah/pull/6226 is needed for bud & run

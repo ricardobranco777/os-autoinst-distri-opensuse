@@ -36,6 +36,9 @@ sub run {
 
     # Install tests dependencies
     my @pkgs = qw(aardvark-dns firewalld iproute2 jq ncat netavark podman);
+    # Needed for https://github.com/containers/aardvark-dns/pull/523
+    # to use dnsmasq over slirp4netns for more stable tests
+    push @pkgs, "dnsmasq" if is_sle("<16");
     if (is_tumbleweed || is_sle('>=16.0')) {
         push @pkgs, qw(dbus-1-daemon);
     } elsif (is_sle) {
@@ -47,6 +50,10 @@ sub run {
     $aardvark = script_output "rpm -ql aardvark-dns | grep podman/aardvark-dns";
     record_info("aardvark-dns version", script_output("$aardvark --version"));
     record_info("aardvark-dns package version", script_output("rpm -q aardvark-dns"));
+
+    # Prevent dnsmasq from getting in the way of tests
+    # https://github.com/containers/podman/issues/9364#issuecomment-779924907
+    run_command "apparmor_parser -R /etc/apparmor.d/usr.sbin.dnsmasq" if is_sle("<16");
 
     # Download aardvark sources
     my $aardvark_version = script_output "$aardvark --version | awk '{ print \$2 }'";
