@@ -1,0 +1,27 @@
+From 9842cb4dcf7803cc645d5dc28649e2e9c1280abd Mon Sep 17 00:00:00 2001
+From: Paul Holzinger <pholzing@redhat.com>
+Date: Tue, 5 Nov 2024 15:17:22 +0100
+Subject: [PATCH] test: make jq query work on centos stream 9
+
+The syntax is not accepted by older version like on centos stream 9,
+this one should work with all versions and thus make the tmt tests on
+centos 9 stream pass again.
+
+Signed-off-by: Paul Holzinger <pholzing@redhat.com>
+---
+ test/100-basic-name-resolution.bats | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/test/100-basic-name-resolution.bats b/test/100-basic-name-resolution.bats
+index 36406bdc..e1c0ae79 100644
+--- a/test/100-basic-name-resolution.bats
++++ b/test/100-basic-name-resolution.bats
+@@ -288,7 +288,7 @@ function teardown() {
+ 	run_in_host_netns ip link add test type bridge
+ 	run_in_host_netns ip link set test up
+ 	run_in_host_netns ip -j addr
+-	link_local_addr=$(jq -r '.[] | select(.ifname=="test").addr_info.[0].local' <<<"$output")
++	link_local_addr=$(jq -r '.[] | select(.ifname=="test").addr_info[0].local' <<<"$output")
+ 
+ 	# update our fake netns resolv.conf with the link local address as only nameserver
+ 	echo "nameserver $link_local_addr%test" >"$AARDVARK_TMPDIR/resolv.conf"

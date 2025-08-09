@@ -2,6 +2,7 @@ aardvark-dns:
   # Note on patches:
   # https://github.com/containers/aardvark-dns/pull/519 is needed for 100-basic-name-resolution
   # https://github.com/containers/aardvark-dns/pull/523 is needed to use dnsmasq over slirp4netns
+  # https://github.com/containers/aardvark-dns/pull/539 is needed for older versions of jq
   # https://github.com/containers/aardvark-dns/pull/568 is needed to fix PR#523
   # https://github.com/containers/aardvark-dns/pull/619 is needed for dnsmasq issue
   opensuse-Tumbleweed:
@@ -16,6 +17,7 @@ aardvark-dns:
     BATS_PATCHES:
     - 519
     - 523
+    - 539
     - 568
     - 619
     BATS_SKIP:
@@ -23,6 +25,7 @@ aardvark-dns:
     BATS_PATCHES:
     - 519
     - 523
+    - 539
     - 568
     - 619
     BATS_SKIP:
@@ -30,6 +33,7 @@ aardvark-dns:
     BATS_PATCHES:
     - 519
     - 523
+    - 539
     - 568
     - 619
     BATS_SKIP:
