@@ -45,7 +45,7 @@ my $settings;
 my %tests_dir = (
     "aardvark-dns" => "test",
     buildah => "tests",
-    netavark => "test",
+    netavark => "test-dhcp",
     podman => "test/system",
     runc => "tests/integration",
     skopeo => "systemtest",
