@@ -9,18 +9,14 @@
 
 use Mojo::Base 'containers::basetest';
 use testapi;
-use serial_terminal qw(select_serial_terminal);
+use serial_terminal;
 use version_utils;
 
+my $engine;
 my $test_dir = "test_dir";
 
-sub run {
-    my ($self, $args) = @_;
-    my $runtime = $args->{runtime};
-
-    my $engine = $self->containers_factory($runtime);
-
-    select_serial_terminal();
+sub test {
+    my $runtime = shift;
 
     # From https://docs.docker.com/storage/bind-mounts/
     # The --mount flag does not support z or Z options for modifying selinux labels.
@@ -114,14 +110,27 @@ sub run {
     assert_script_run("$runtime volume prune $all -f | grep -Fx $test_volume");
     assert_script_run("! $runtime volume inspect $test_volume");
     assert_script_run("[ \$($runtime volume ls --quiet --filter dangling=true | wc -l\) -eq 0 ]");
-
-    $engine->cleanup_system_host();
 }
 
-1;
+sub run {
+    my ($self, $args) = @_;
+    my $runtime = $args->{runtime};
+
+    $engine = $self->containers_factory($runtime);
+
+    select_serial_terminal();
+    test $runtime;
+
+    if ($runtime eq "podman" && !is_transactional) {
+        select_user_serial_terminal();
+        test $runtime;
+    }
+}
 
 sub cleanup() {
+    select_serial_terminal();
     script_run("rm -rf $test_dir");
+    $engine->cleanup_system_host();
 }
 
 sub post_fail_hook {
@@ -135,3 +144,5 @@ sub post_run_hook {
     cleanup();
     $self->SUPER::post_run_hook;
 }
+
+1;
