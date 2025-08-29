@@ -427,8 +427,9 @@ sub bats_tests {
         patch_logfile($log_file, @skip_tests);
     }
 
-    parse_extra_log(TAP => $log_file);
-    upload_logs($xmlfile);
+    parse_extra_log(XUnit => $xmlfile);
+    # parse_extra_log(TAP => $log_file);
+    upload_logs($log_file);
 
     run_command "sudo rm -rf $tmp_dir || true";
 
