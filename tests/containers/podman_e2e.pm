@@ -139,8 +139,10 @@ sub setup {
     run_command "cd ~/podman";
 
     unless ($repo) {
+        # - https://github.com/containers/podman/pull/25942 - Fix: Remove appending rw as the default mount option
         # - https://github.com/containers/podman/pull/26934 - test/e2e: fix 'block all syscalls' seccomp for runc
-        my @patches = qw(26934);
+        # - https://github.com/containers/podman/pull/26936 - Skip some tests that fail on runc
+        my @patches = is_sle ? qw(25942 26934 26936) : qw(26934 26936);
         foreach my $patch (@patches) {
             my $url = "https://github.com/$github_org/podman/pull/$patch";
             record_info("patch", $url);
