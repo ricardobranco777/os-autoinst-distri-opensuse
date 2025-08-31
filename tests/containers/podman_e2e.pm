@@ -170,9 +170,11 @@ sub run {
     );
     my $env = join " ", map { "$_=$env{$_}" } sort keys %env;
 
-    my @targets = split('\s+', get_var('PODMAN_TARGETS', 'localintegration remoteintegration'));
+    my $default_targets = "localintegration";
+    $default_targets .= " remoteintegration" if is_tumbleweed;
+    my @targets = split('\s+', get_var('PODMAN_TARGETS', $default_targets));
     foreach my $target (@targets) {
-        run_command "env $env make $target &> $target.txt || true", timeout => 1800;
+        run_command "env $env make $target |& tee $target.txt || true", timeout => 1800;
         script_run qq{sed -ri '0,/name=/s/name="Libpod Suite"/name="$target"/' report.xml};
         script_run "cp report.xml /tmp/$target.xml";
         patch_junit_xfails("/tmp/$target.xml", $oci_runtime);
