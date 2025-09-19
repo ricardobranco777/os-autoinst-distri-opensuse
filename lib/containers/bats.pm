@@ -194,7 +194,8 @@ sub patch_logfile {
         }
     }
     assert_script_run "bats_skip_notok $log_file " . join(' ', @skip_tests) if (@skip_tests);
-    assert_script_run "sed -i.bak -e 's/.*<failure/<!-- &/' -e 's,</failure>,& -->&,' $xmlfile";
+    assert_script_run qq(sed -i.bak -e 's/failures="1"/failures="0"/' $xmlfile);
+    # assert_script_run "sed -i.bak -e 's/.*<failure/<!-- &/' -e 's,</failure>,& -->&,' $xmlfile";
 }
 
 # /tmp as tmpfs has multiple issues: it can't store SELinux labels, consumes RAM and doesn't have enough space
