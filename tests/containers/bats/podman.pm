@@ -48,8 +48,8 @@ sub run {
     my ($self) = @_;
     select_serial_terminal;
 
-    my @pkgs = qw(aardvark-dns apache2-utils buildah catatonit glibc-devel-static go1.24 gpg2 libgpgme-devel
-      libseccomp-devel make netavark openssl podman podman-remote python3-PyYAML skopeo socat sudo systemd-container xfsprogs);
+    my @pkgs = qw(aardvark-dns apache2-utils autoconf automake buildah catatonit glibc-devel-static go1.24 gpg2 libgpgme-devel libyajl-devel libcap-devel patch libtool
+      libseccomp-devel make netavark openssl podman podman-remote python3-PyYAML skopeo socat sudo systemd-container systemd-devel xfsprogs);
     push @pkgs, qw(criu libcriu2) if is_tumbleweed;
     push @pkgs, qw(netcat-openbsd) if is_sle("<16");
     # Needed for podman machine
@@ -78,6 +78,19 @@ sub run {
     patch_sources "podman", "v$podman_version", "test/system";
 
     $oci_runtime = get_var("OCI_RUNTIME", script_output("podman info --format '{{ .Host.OCIRuntime.Name }}'"));
+
+    # Compile crun
+    assert_script_run "git clone https://github.com/containers/crun", timeout => 300;
+    assert_script_run "cd crun ; git checkout 1.24";
+    my $gist = "https://gist.githubusercontent.com/ricardobranco777/f416402e1d935c5db009b3cafcf2047a/raw/3406fa843f543b7948636d2d8f1a96d811372b17/gistfile1.txt";
+    assert_script_run "curl -so patch $gist";
+    assert_script_run "patch -p1 < patch";
+    assert_script_run "./autogen.sh", timeout => 300;
+    assert_script_run "./configure CFLAGS=-I/usr/include/libseccomp", timeout => 300;
+    assert_script_run "make", timeout => 300;
+    assert_script_run "sudo cp -f crun /usr/bin/crun";
+    record_info("crun", script_output("crun --version"));
+    assert_script_run "cd -";
 
     # Patch tests
     run_command "sed -i 's/^PODMAN_RUNTIME=/&$oci_runtime/' test/system/helpers.bash";
