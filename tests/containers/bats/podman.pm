@@ -82,9 +82,8 @@ sub run {
     # Compile crun
     assert_script_run "git clone https://github.com/containers/crun", timeout => 300;
     assert_script_run "cd crun ; git checkout 1.24";
-    my $gist = "https://gist.githubusercontent.com/ricardobranco777/f416402e1d935c5db009b3cafcf2047a/raw/3406fa843f543b7948636d2d8f1a96d811372b17/gistfile1.txt";
-    assert_script_run "curl -so patch $gist";
-    assert_script_run "patch -p1 < patch";
+    assert_script_run "curl -sLO https://github.com/containers/crun/pull/1888.patch";
+    assert_script_run "git apply -3 --ours 1888.patch";
     assert_script_run "./autogen.sh", timeout => 300;
     assert_script_run "./configure CFLAGS=-I/usr/include/libseccomp", timeout => 300;
     assert_script_run "make", timeout => 300;
