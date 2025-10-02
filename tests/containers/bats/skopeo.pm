@@ -48,6 +48,10 @@ sub run {
 
     switch_to_user;
 
+    record_info("XDG_DATA_DIRS", script_output('echo $XDG_DATA_DIRS'));
+    record_info("XDG_DATA_DIRS", script_output('echo $XDG_RUNTIME_DIR'));
+
+
     # Download skopeo sources
     my $skopeo_version = script_output "skopeo --version  | awk '{ print \$3 }'";
     patch_sources "skopeo", "v$skopeo_version", "systemtest";
