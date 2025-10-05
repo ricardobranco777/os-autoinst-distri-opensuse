@@ -353,3 +353,8 @@ skopeo:
     BATS_IGNORE:
     BATS_IGNORE_ROOT:
     BATS_IGNORE_USER:
+umoci:
+  opensuse-Tumbleweed:
+    BATS_IGNORE:
+    BATS_IGNORE_ROOT:
+    BATS_IGNORE_USER:
