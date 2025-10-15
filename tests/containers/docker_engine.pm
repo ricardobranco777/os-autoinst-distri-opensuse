@@ -20,7 +20,7 @@ my @test_dirs;
 
 sub setup {
     my $self = shift;
-    my @pkgs = qw(containerd-ctr distribution-registry docker go1.24 make);
+    my @pkgs = qw(containerd-ctr distribution-registry docker glibc-devel-static go1.24 make);
     $self->setup_pkgs(@pkgs);
 
     # The tests assume a vanilla configuration
@@ -72,6 +72,7 @@ sub setup {
     } else {
         # Adapted from https://build.opensuse.org/projects/openSUSE:Factory/packages/docker/files/docker-integration.sh
         @test_dirs = split(/\n/, script_output(qq(go list -test -f '{{- if ne .ForTest "" -}}{{- .Dir -}}{{- end -}}' ./integration/... | sed "s,^\$(pwd)/,," | grep -vxE '($ignore_dirs)')));
+        push @test_dirs, "integration-cli";
     }
 
     # Preload Docker images used for testing
@@ -108,7 +109,7 @@ sub run {
     foreach my $dir (@test_dirs) {
         my $report = $dir =~ s|/|-|gr;
         run_command "pushd $dir";
-        run_command "$env gotestsum --junitfile $report.xml --format standard-verbose ./... -- -tags '$tags' |& tee -a /var/tmp/report.txt", timeout => 600;
+        run_command "$env gotestsum --junitfile $report.xml --format standard-verbose ./... -- -tags '$tags' |& tee -a /var/tmp/report.txt", timeout => 1200;
         patch_junit "cli", $version, "$report.xml", @xfails;
         parse_extra_log(XUnit => "$report.xml");
         run_command "popd";
