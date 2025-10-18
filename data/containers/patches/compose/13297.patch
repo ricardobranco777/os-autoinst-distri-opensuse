@@ -1,0 +1,118 @@
+From 8b6225fa25bfa20dd1e8e92b921f3889af320ae0 Mon Sep 17 00:00:00 2001
+From: Ricardo Branco <rbranco@suse.de>
+Date: Sat, 18 Oct 2025 22:35:54 +0200
+Subject: [PATCH] test: Make tests runnable on SELinux enabled daemon
+
+Signed-off-by: Ricardo Branco <rbranco@suse.de>
+---
+ pkg/e2e/fixtures/hooks/compose.yaml            | 4 ++--
+ pkg/e2e/fixtures/logs-test/cat.yaml            | 2 +-
+ pkg/e2e/fixtures/recreate-volumes/compose.yaml | 2 +-
+ pkg/e2e/fixtures/stdout-stderr/compose.yaml    | 2 +-
+ pkg/e2e/fixtures/switch-volumes/compose.yaml   | 2 +-
+ pkg/e2e/fixtures/volume-test/compose.yaml      | 6 +++---
+ pkg/e2e/fixtures/watch/compose.yaml            | 4 ++--
+ 7 files changed, 11 insertions(+), 11 deletions(-)
+
+diff --git a/pkg/e2e/fixtures/hooks/compose.yaml b/pkg/e2e/fixtures/hooks/compose.yaml
+index b45a65df063..31d2b4a80ad 100644
+--- a/pkg/e2e/fixtures/hooks/compose.yaml
++++ b/pkg/e2e/fixtures/hooks/compose.yaml
+@@ -2,7 +2,7 @@ services:
+   sample:
+     image: nginx
+     volumes:
+-      - data:/data
++      - "data:/data:z"
+     pre_stop:
+       - command: sh -c 'echo "In the pre-stop" >> /data/log.txt'
+   test:
+@@ -11,4 +11,4 @@ services:
+       - command: sh -c 'echo env'
+ volumes:
+   data:
+-    name: sample-data
+\ No newline at end of file
++    name: sample-data
+diff --git a/pkg/e2e/fixtures/logs-test/cat.yaml b/pkg/e2e/fixtures/logs-test/cat.yaml
+index 76bd5a9ab64..3327d1894ec 100644
+--- a/pkg/e2e/fixtures/logs-test/cat.yaml
++++ b/pkg/e2e/fixtures/logs-test/cat.yaml
+@@ -3,4 +3,4 @@ services:
+     image: alpine
+     command: cat /text_file.txt
+     volumes:
+-      - ${FILE}:/text_file.txt
++      - "${FILE}:/text_file.txt:z"
+diff --git a/pkg/e2e/fixtures/recreate-volumes/compose.yaml b/pkg/e2e/fixtures/recreate-volumes/compose.yaml
+index e0e40c721b7..bc6d4e038cb 100644
+--- a/pkg/e2e/fixtures/recreate-volumes/compose.yaml
++++ b/pkg/e2e/fixtures/recreate-volumes/compose.yaml
+@@ -2,7 +2,7 @@ services:
+   app:
+     image: alpine
+     volumes:
+-      - my_vol:/my_vol
++      - "my_vol:/my_vol:z"
+ 
+ volumes:
+   my_vol:
+diff --git a/pkg/e2e/fixtures/stdout-stderr/compose.yaml b/pkg/e2e/fixtures/stdout-stderr/compose.yaml
+index 53a44b4552c..48885b63c56 100644
+--- a/pkg/e2e/fixtures/stdout-stderr/compose.yaml
++++ b/pkg/e2e/fixtures/stdout-stderr/compose.yaml
+@@ -4,4 +4,4 @@ services:
+     init: true
+     command: /bin/ash /log_to_stderr.sh
+     volumes:
+-           - ./log_to_stderr.sh:/log_to_stderr.sh
++           - "./log_to_stderr.sh:/log_to_stderr.sh:z"
+diff --git a/pkg/e2e/fixtures/switch-volumes/compose.yaml b/pkg/e2e/fixtures/switch-volumes/compose.yaml
+index 9da0dcba175..7af5caca67b 100644
+--- a/pkg/e2e/fixtures/switch-volumes/compose.yaml
++++ b/pkg/e2e/fixtures/switch-volumes/compose.yaml
+@@ -2,7 +2,7 @@ services:
+   app:
+     image: alpine
+     volumes:
+-      - my_vol:/my_vol
++      - "my_vol:/my_vol:z"
+ 
+ volumes:
+   my_vol:
+diff --git a/pkg/e2e/fixtures/volume-test/compose.yaml b/pkg/e2e/fixtures/volume-test/compose.yaml
+index 7567da42ef8..183818caa16 100644
+--- a/pkg/e2e/fixtures/volume-test/compose.yaml
++++ b/pkg/e2e/fixtures/volume-test/compose.yaml
+@@ -9,9 +9,9 @@ services:
+   nginx2:
+     build: nginx-build
+     volumes:
+-      - staticVol:/usr/share/nginx/html:ro
++      - "staticVol:/usr/share/nginx/html:ro,z"
+       - /usr/src/app/node_modules
+-      - otherVol:/usr/share/nginx/test
++      - "otherVol:/usr/share/nginx/test:z"
+     ports:
+       - 9090:80
+     configs:
+@@ -30,4 +30,4 @@ configs:
+ 
+ secrets:
+   mysecret:
+-    file: ./static/index.html
+\ No newline at end of file
++    file: ./static/index.html
+diff --git a/pkg/e2e/fixtures/watch/compose.yaml b/pkg/e2e/fixtures/watch/compose.yaml
+index 7e5e0d28bf4..ec0c2a8a21b 100644
+--- a/pkg/e2e/fixtures/watch/compose.yaml
++++ b/pkg/e2e/fixtures/watch/compose.yaml
+@@ -38,6 +38,6 @@ services:
+     init: true
+     command: sleep infinity
+     volumes:
+-      - ./dat:/app/dat
+-      - ./data-logs:/app/data-logs
++      - "./dat:/app/dat:z"
++      - "./data-logs:/app/data-logs:z"
+     develop: *x-dev
