@@ -1,0 +1,88 @@
+From 2dd31110985a566a5ff05d248919018c19f5be90 Mon Sep 17 00:00:00 2001
+From: Winter M <winter@antithesis.com>
+Date: Fri, 22 Aug 2025 17:19:19 -0400
+Subject: [PATCH 1/2] fix(libpod): truncate long hostnames to correct maximum
+ length
+
+Since #24675, we've been truncating hostnames derived from the container name
+to 253 characters. However, if a user were to create a container with a long
+name and not set a hostname, this would still fail.
+
+Seemingly, the maximum length for hostnames is (and always(?) has been) 64, as
+made evident by these headers from various kernel versions:
+
+- https://elixir.bootlin.com/linux/v6.16/source/include/uapi/linux/utsname.h#L15
+- https://elixir.bootlin.com/linux/v4.20/source/include/uapi/linux/utsname.h#L15
+- https://elixir.bootlin.com/linux/v3.19.8/source/include/uapi/linux/utsname.h#L14
+
+I've confirmed this issue (and fix) on Linux 6.1, but happy to do so on a more
+recent kernel as well.
+
+Signed-off-by: Winter M <winter@antithesis.com>
+---
+ libpod/container.go              | 6 +++---
+ test/e2e/containers_conf_test.go | 4 ++--
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/libpod/container.go b/libpod/container.go
+index a6a509ae6c..3fba6c8819 100644
+--- a/libpod/container.go
++++ b/libpod/container.go
+@@ -741,14 +741,14 @@ func (c *Container) hostname(network bool) string {
+ 	// containers.conf, use a sanitized version of the container's name
+ 	// as the hostname.  Since the container name must already match
+ 	// the set '[a-zA-Z0-9][a-zA-Z0-9_.-]*', we can just remove any
+-	// underscores and limit it to 253 characters to make it a valid
++	// underscores and limit it to 64 characters to make it a valid
+ 	// hostname.
+ 	if c.runtime.config.Containers.ContainerNameAsHostName {
+ 		sanitizedHostname := strings.ReplaceAll(c.Name(), "_", "")
+-		if len(sanitizedHostname) <= 253 {
++		if len(sanitizedHostname) <= 64 {
+ 			return sanitizedHostname
+ 		}
+-		return sanitizedHostname[:253]
++		return sanitizedHostname[:64]
+ 	}
+ 
+ 	// Otherwise use the container's short ID as the hostname.
+diff --git a/test/e2e/containers_conf_test.go b/test/e2e/containers_conf_test.go
+index fac038e096..7df183ed1c 100644
+--- a/test/e2e/containers_conf_test.go
++++ b/test/e2e/containers_conf_test.go
+@@ -888,7 +888,7 @@ var _ = Describe("Verify podman containers.conf usage", func() {
+ 		name = getContainerConfig(containerID, "{{ .Name }}")
+ 		// Double check that name actually got set correctly
+ 		Expect(name).To(Equal(longHostname))
+-		// Hostname should be the container name truncated to 253 characters
+-		Expect(hostname).To(Equal(name[:253]))
++		// Hostname should be the container name truncated to 64 characters
++		Expect(hostname).To(Equal(name[:64]))
+ 	})
+ })
+
+From e467439ab8991c536b4fd0292afc02df67731f89 Mon Sep 17 00:00:00 2001
+From: Winter M <winter@antithesis.com>
+Date: Wed, 27 Aug 2025 11:16:26 -0400
+Subject: [PATCH 2/2] test/e2e: actually start container in startContainer
+
+https://github.com/containers/podman/pull/26891#pullrequestreview-3152061969
+
+Signed-off-by: Winter M <winter@antithesis.com>
+---
+ test/e2e/containers_conf_test.go | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/test/e2e/containers_conf_test.go b/test/e2e/containers_conf_test.go
+index 7df183ed1c..98a4cfe669 100644
+--- a/test/e2e/containers_conf_test.go
++++ b/test/e2e/containers_conf_test.go
+@@ -788,7 +788,7 @@ var _ = Describe("Verify podman containers.conf usage", func() {
+ 	})
+ 
+ 	startContainer := func(params ...string) string {
+-		args := []string{"create"}
++		args := []string{"run", "-d"}
+ 		for _, param := range params {
+ 			if param == "--name" {
+ 				args = append(args, "--replace")
