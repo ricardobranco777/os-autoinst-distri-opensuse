@@ -1,0 +1,55 @@
+From e43216ed69b083d253711a5eaae123ccb988ea45 Mon Sep 17 00:00:00 2001
+From: Yumei Huang <yuhuang@redhat.com>
+Date: Wed, 26 Nov 2025 17:05:24 +0800
+Subject: [PATCH] test/system: Fix the IPv6 address mismatch error
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+For IPv6 addresses within the same scope group, Linux kernel preserves
+insertion order, where the first inserted address appears last. As a
+result, the ordering inside pasta differs from the host, causing a
+test to fail when they compare only the first address on each side.
+Fix this by checking that the container’s first address matches any of
+the host’s addresses.
+
+Signed-off-by: Yumei Huang <yuhuang@redhat.com>
+---
+ test/system/505-networking-pasta.bats | 6 +++---
+ test/system/helpers.network.bash      | 8 ++++++++
+ 2 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/test/system/505-networking-pasta.bats b/test/system/505-networking-pasta.bats
+index 4da8fc83f72..1f55eb80e12 100644
+--- a/test/system/505-networking-pasta.bats
++++ b/test/system/505-networking-pasta.bats
+@@ -307,10 +307,10 @@ function pasta_test_do() {
+     run_podman run --rm --net=pasta $IMAGE ip -j -6 address show
+ 
+     local container_address="$(ipv6_get_addr_global "${output}")"
+-    local host_address="$(default_addr 6)"
++    local host_addresses="$(all_addr 6)"
+ 
+-    assert "${container_address}" = "${host_address}" \
+-           "Container address not matching host"
++    echo "${host_addresses}" | grep -qw "${container_address}"
++    assert $? -eq 0 "Container address not matching host"
+ }
+ 
+ @test "IPv6 address assignment" {
+diff --git a/test/system/helpers.network.bash b/test/system/helpers.network.bash
+index 8d0b419b36a..132f0a37d7b 100644
+--- a/test/system/helpers.network.bash
++++ b/test/system/helpers.network.bash
+@@ -449,3 +449,11 @@ function default_addr() {
+     local expr='[.[0].addr_info[] | select(.deprecated != true)][0].local'
+     ip -j -"${ip_ver}" addr show "${ifname}" | jq -rM "${expr}"
+ }
++
++function all_addr() {
++    local ip_ver="${1}"
++    local ifname="${2:-$(default_ifname "${ip_ver}")}"
++
++    local expr='[.[0].addr_info[] | select(.deprecated != true)]'
++    ip -j -"${ip_ver}" addr show "${ifname}" | jq -rM "${expr}" | grep local | cut -d'"' -f4 | tr '\n' ' '
++}
