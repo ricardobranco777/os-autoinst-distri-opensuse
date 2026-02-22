@@ -1,0 +1,39 @@
+From 21cb4948fdd80347eef4b707f4433234404556d9 Mon Sep 17 00:00:00 2001
+From: Ricardo Branco <rbranco@suse.de>
+Date: Sun, 22 Feb 2026 10:51:48 +0100
+Subject: [PATCH] test: Use yq for yaml2json instead of PyYAML
+
+Signed-off-by: Ricardo Branco <rbranco@suse.de>
+---
+ test/README.md            | 1 +
+ test/system/710-kube.bats | 5 +----
+ 2 files changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/test/README.md b/test/README.md
+index 99b6f4a988d..26a4f85eced 100644
+--- a/test/README.md
++++ b/test/README.md
+@@ -45,6 +45,7 @@ The test currently depend on:
+  - tar
+  - docker
+  - systemd/systemctl
++ - yq
+ 
+ Most of these are only required for a few tests so it is not a big issue if not everything is installed. Only a few test should fail then.
+ 
+diff --git a/test/system/710-kube.bats b/test/system/710-kube.bats
+index 4c0bb807900..4eb9b37bbcc 100644
+--- a/test/system/710-kube.bats
++++ b/test/system/710-kube.bats
+@@ -14,10 +14,7 @@ capabilities='{"drop":["CAP_FOWNER","CAP_SETFCAP"]}'
+ 
+ # filter: convert yaml to json, because bash+yaml=madness
+ function yaml2json() {
+-    python3 -c 'import yaml
+-import json
+-import sys
+-json.dump(yaml.safe_load(sys.stdin), sys.stdout)'
++    yq -p yaml -o json
+ }
+ 
+ ###############################################################################
