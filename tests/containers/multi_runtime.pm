@@ -91,6 +91,12 @@ sub run {
     my @pkgs = ("docker", "podman", "jq");
     install_packages(@pkgs);
 
+    # Needed to avoid:
+    # WARNING: COMMAND_FAILED: '/sbin/iptables -t nat -F DOCKER' failed: iptables: No chain/target/match by that name.
+    # See https://bugzilla.suse.com/show_bug.cgi?id=1196801
+    systemctl "restart firewalld";
+    systemctl "status firewalld";
+
     # https://docs.docker.com/engine/daemon/ipv6/
     assert_script_run "sed -i 's%^{%&\"ipv6\":true,\"fixed-cidr-v6\":\"2001:db8:1::/64\",%' /etc/docker/daemon.json";
     record_info("docker daemon.json", script_output("cat /etc/docker/daemon.json"));
@@ -103,12 +109,6 @@ sub run {
     record_info("WARNINGS client", $warnings) if $warnings;
     record_info("docker version", script_output("docker version"));
     record_info("podman root", script_output("podman info"));
-
-    # Needed to avoid:
-    # WARNING: COMMAND_FAILED: '/sbin/iptables -t nat -F DOCKER' failed: iptables: No chain/target/match by that name.
-    # See https://bugzilla.suse.com/show_bug.cgi?id=1196801
-    systemctl "restart firewalld";
-    systemctl "status firewalld";
 
     assert_script_run "echo '$testapi::username ALL=(ALL:ALL) NOPASSWD: ALL' | tee -a /etc/sudoers.d/nopasswd";
 
