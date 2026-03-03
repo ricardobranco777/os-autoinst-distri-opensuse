@@ -1,0 +1,47 @@
+From 2ab78a8d82eac5639f7a39409964345531d03099 Mon Sep 17 00:00:00 2001
+From: Kir Kolyshkin <kolyshkin@gmail.com>
+Date: Mon, 2 Mar 2026 12:54:32 -0800
+Subject: [PATCH] test/system: fix some teardown error logging
+
+Statement
+
+	for line in "${lines[*]}"
+
+does not make sense since line will be a single value consisting of
+all elements of lines array, space-separated.
+
+It should be
+
+	for line in "${lines[@]}"
+
+if we want to iterate through each value.
+
+Fixes: 00292ae1c47 ("systests: test instrumentation")
+Fixes: c33ba70f95c ("system tests: instrument, to try to catch unlinkat-ebusy")
+Signed-off-by: Kir Kolyshkin <kolyshkin@gmail.com>
+---
+ test/system/helpers.bash | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/test/system/helpers.bash b/test/system/helpers.bash
+index 2f568611764..5d1441a994f 100644
+--- a/test/system/helpers.bash
++++ b/test/system/helpers.bash
+@@ -433,7 +433,7 @@ function clean_setup() {
+         #   yet because too many tests don't clean up their containers
+         if [[ $status -ne 0 ]]; then
+             echo "# [teardown] $_LOG_PROMPT podman $action" >&3
+-            for line in "${lines[*]}"; do
++            for line in "${lines[@]}"; do
+                 echo "# $line" >&3
+             done
+ 
+@@ -441,7 +441,7 @@ function clean_setup() {
+             if [[ $status -eq 124 ]]; then
+                 echo "# [teardown] $_LOG_PROMPT podman system locks" >&3
+                 run "${PODMAN_CMD[@]}" system locks
+-                for line in "${lines[*]}"; do
++                for line in "${lines[@]}"; do
+                     echo "# $line" >&3
+                 done
+             fi
