@@ -154,8 +154,6 @@ podman:
     merged: "5.7.0"
   28133:
     min: "5.8.0"
-  28151:
-    min: "5.8.0"
 
 podman-py:
   # https://github.com/containers/podman-py/pull/623 - Fix pytest flag for rootful test
