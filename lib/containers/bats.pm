@@ -383,6 +383,10 @@ sub setup_pkgs {
     run_command "zypper --gpg-auto-import-keys -n install --allow-vendor-change @pkgs", timeout => 1200;
     install_git unless is_tumbleweed;
 
+    run_command "zypper addrepo -f https://download.opensuse.org/history/20260226/tumbleweed/repo/oss/ tw-snap-20260226";
+    run_command "zypper -n install --force-resolution --oldpackage --from tw-snap-20260226 systemd";
+    record_info "systemd", script_output("rpm -qi systemd");
+
     configure_oci_runtime $oci_runtime;
 
     if (script_run("test -f /usr/local/bin/patch_junit")) {
