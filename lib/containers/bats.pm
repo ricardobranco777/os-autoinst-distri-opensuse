@@ -383,6 +383,8 @@ sub setup_pkgs {
     run_command "zypper --gpg-auto-import-keys -n install --allow-vendor-change @pkgs", timeout => 1200;
     install_git unless is_tumbleweed;
 
+    assert_script_run "curl -LO " . data_url("containers/runc.rpm");
+    assert_script_run "rpm -ivh --force runc.rpm";
     configure_oci_runtime $oci_runtime;
 
     if (script_run("test -f /usr/local/bin/patch_junit")) {
