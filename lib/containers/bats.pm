@@ -514,8 +514,6 @@ sub bats_post_hook {
     assert_script_run "mkdir -p $log_dir || true";
     assert_script_run "cd $log_dir";
 
-    script_run("rm -rf $test_dir", timeout => 0) unless ($test_dir eq "/var/tmp/");
-
     collect_calltraces;
     collect_coredumps;
 
@@ -614,8 +612,6 @@ sub bats_tests {
     my $version = script_output "rpm -q --queryformat '%{VERSION}' $package";
     patch_junit $package, $version, $xmlfile, @xfails;
     parse_extra_log(XUnit => $xmlfile, timeout => 180);
-
-    script_run("rm -rf $tmp_dir || true", timeout => 0);
 
     return ($ret);
 }
