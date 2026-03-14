@@ -388,6 +388,8 @@ sub setup_pkgs {
     push @pkgs, "git" unless is_sle;
     run_command "zypper --gpg-auto-import-keys -n install --allow-vendor-change @pkgs", timeout => 1200;
     install_git unless is_tumbleweed;
+    # https://bugzilla.suse.com/show_bug.cgi?id=1259595
+    run_command "zypper -n remove nfs-client" if is_tumbleweed;
 
     configure_oci_runtime $oci_runtime;
 
