@@ -32,10 +32,8 @@ our @EXPORT = qw(
   bats_tests
   cleanup_docker
   cleanup_podman
-  cleanup_rootless_docker
   configure_containerd_mirror
   configure_docker
-  configure_rootless_docker
   configure_podman_mirror
   go_arch
   install_gotestsum
@@ -184,31 +182,6 @@ sub configure_docker {
     record_info "WARNINGS client", $warnings if $warnings;
 }
 
-sub configure_rootless_docker {
-    run_command "modprobe br_netfilter || true";
-    run_command "systemctl stop docker || true";
-
-    switch_to_user;
-
-    if (script_output(q(docker --version | awk -F'[. ]' '{ print $3 }')) > 28) {
-        run_command 'mkdir -p ${XDG_CONFIG_HOME:-$HOME/.config}/docker';
-        my $docker_min_api_version = get_var("DOCKER_MIN_API_VERSION", "1.24");
-        run_command qq(echo '{"min-api-version": "$docker_min_api_version"}' > \${XDG_CONFIG_HOME:-\$HOME/.config}/docker/daemon.json);
-    }
-
-    # https://docs.docker.com/engine/security/rootless/
-    run_command "dockerd-rootless-setuptool.sh install";
-    run_command "systemctl --user enable --now docker";
-    run_command "export DOCKER_HOST=unix:///run/user/\$(id -u)/docker.sock";
-    record_info "docker status", script_output("systemctl status --user docker", proceed_on_failure => 1);
-    record_info "rootless", script_output("docker info -f json | jq -Mr");
-    my $warnings = script_output("docker info -f '{{ range .Warnings }}{{ println . }}{{ end }}'");
-    record_info "WARNINGS daemon", $warnings if $warnings;
-    $warnings = script_output("docker info -f '{{ range .ClientInfo.Warnings }}{{ println . }}{{ end }}'");
-    record_info "WARNINGS client", $warnings if $warnings;
-    run_command 'export PATH=$PATH:/usr/sbin:/sbin';
-}
-
 sub configure_containerd_mirror {
     my $version = shift;
 
@@ -258,12 +231,6 @@ sub cleanup_docker {
     script_run "docker system prune -a -f", timeout => $timeout;
     script_run "unset DOCKER_HOST DOCKER_TLS_VERIFY";
     systemctl "restart docker";
-}
-
-sub cleanup_rootless_docker {
-    select_user_serial_terminal;
-    script_run "dockerd-rootless-setuptool.sh uninstall";
-    script_run "rootlesskit rm -rf ~/.local/share/docker";
 }
 
 sub cleanup_podman {

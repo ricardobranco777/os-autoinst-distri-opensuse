@@ -40,8 +40,6 @@ sub setup {
     configure_podman_mirror;
     run_command "ln -s /var/tmp/docker-frozen-images /";
 
-    configure_rootless_docker if get_var("ROOTLESS");
-
     install_gotestsum;
 
     patch_sources "moby", $version, "integration";
@@ -148,7 +146,6 @@ sub run {
 }
 
 sub cleanup {
-    cleanup_rootless_docker if get_var("ROOTLESS");
     select_serial_terminal;
     script_run "rm -f /usr/local/bin/{ctr,docker,ping} /var/tmp/docker";
     cleanup_docker;
