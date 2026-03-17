@@ -91,7 +91,9 @@ moby:
   # https://github.com/moby/moby/pull/52119 - integration/image: pull ppc64le and s390x in TestSaveAndLoadPlatform
   51219:
     merged: "29.0.0"
+  # XXX here "merged" should mean non-inclusive max
   51263:
+    merged: "29.2.0"
   51794:
   51970:
     min: "29.2.0"
