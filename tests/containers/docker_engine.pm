@@ -90,18 +90,13 @@ sub run {
     select_serial_terminal;
     $self->setup;
 
-    my $firewall_backend = script_output "docker info -f '{{ .FirewallBackend.Driver }}' | awk -F+ '{ print \$1 }'";
-    record_info "firewall backend", $firewall_backend;
-    my $test_no_firewalld = ($firewall_backend eq "iptables") ? "true" : "";
-
     my $docker_dest = "/var/tmp/moby/bundles/tmp";
     run_command "mkdir -p $docker_dest";
 
     my %env = (
         DOCKER_INTEGRATION_DAEMON_DEST => $docker_dest,
-        DOCKER_FIREWALL_BACKEND => $firewall_backend,
-        DOCKER_TEST_NO_FIREWALLD => $test_no_firewalld,
         DOCKER_ROOTLESS => get_var("ROOTLESS", ""),
+        DOCKER_TEST_NO_FIREWALLD => "true",
         TZ => "UTC",
     );
 
