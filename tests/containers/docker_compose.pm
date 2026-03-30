@@ -22,10 +22,15 @@ my $version;
 sub setup {
     my $self = shift;
     my @pkgs = qw(docker docker-buildx docker-compose go1.26 make openssl);
+    # To test cross-platform builds
+    push @pkgs, "qemu-linux-user" unless is_sle("<16");
     $self->setup_pkgs(@pkgs);
 
     # docker-compose tests needs to be patched upstream to support SELinux
     configure_docker(selinux => 0, tls => 1);
+
+    # https://docs.docker.com/build/building/multi-platform/
+    run_command "docker run --privileged --rm tonistiigi/binfmt --install all" unless is_sle("<16");
 
     # Some tests need this file
     run_command "mkdir /root/.docker || true";
@@ -52,11 +57,6 @@ sub test ($target) {
     # Extract "v2" or "v5" from $version
     my $v = substr($version, 0, 2);
     my @xfails = (
-        # These fail with Docker v29: https://github.com/docker/compose/issues/13565
-        # and multi-arch may need the containerd image store as documented here:
-        # https://docs.docker.com/build/building/multi-platform/
-        "github.com/docker/compose/$v/pkg/e2e::TestBuildPlatformsStandardErrors",
-        "github.com/docker/compose/$v/pkg/e2e::TestBuildPlatformsStandardErrors/builder_does_not_support_multi-arch",
         "github.com/docker/compose/$v/pkg/e2e::TestLocalComposeRun",
         "github.com/docker/compose/$v/pkg/e2e::TestLocalComposeRun/compose_run_-rm_with_stop_signal",
         # Flaky tests:
@@ -66,6 +66,10 @@ sub test ($target) {
         "github.com/docker/compose/$v/pkg/e2e::TestWatch",
         "github.com/docker/compose/$v/pkg/e2e::TestWatch/debian",
     );
+    push @xfails, (
+        "github.com/docker/compose/$v/pkg/e2e::TestBuildPlatformsStandardErrors",
+        "github.com/docker/compose/$v/pkg/e2e::TestBuildPlatformsStandardErrors/builder_does_not_support_multi-arch",
+    ) if (is_sle("<16"));
 
     run_timeout_command "$env make $target &> $target.txt", no_assert => 1, timeout => 3600;
     upload_logs "$target.txt";
