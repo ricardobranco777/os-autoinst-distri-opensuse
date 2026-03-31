@@ -29,9 +29,6 @@ sub setup {
     # docker-compose tests needs to be patched upstream to support SELinux
     configure_docker(selinux => 0, tls => 1);
 
-    # https://docs.docker.com/build/building/multi-platform/
-    run_command "docker run --privileged --rm tonistiigi/binfmt --install all" unless is_sle("<16");
-
     # Some tests need this file
     run_command "mkdir /root/.docker || true";
     run_command "touch /root/.docker/config.json";
