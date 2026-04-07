@@ -34,6 +34,7 @@ use testapi;
 use YuiRestClient;
 use scheduler 'get_test_suite_data';
 use YaST::Module;
+use serial_terminal 'select_serial_terminal';
 
 my $partitioner;
 my $test_data;
@@ -134,6 +135,12 @@ sub run {
     add_logical_volumes;
     verify_logical_volumes;
     delete_volume_group;
+}
+
+sub post_run_hook {
+    select_serial_terminal;
+    script_run "tar zcf /tmp/y2log.tgz -C /var/log/YaST2 y2log";
+    upload_logs "/tmp/y2log.tgz";
 }
 
 1;
