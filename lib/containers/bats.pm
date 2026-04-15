@@ -709,15 +709,11 @@ sub patch_sources {
     @patches = () if check_var("GITHUB_PATCHES", "none");
 
     my $github_org = "containers";
-    if ($package =~ /runc|umoci/) {
-        $github_org = "opencontainers";
-    } elsif ($package =~ /buildx|cli|compose|docker/) {
-        $github_org = "docker";
-    } elsif ($package =~ /moby/) {
-        $github_org = "moby";
-    } elsif ($package =~ /containerd/) {
-        $github_org = "containerd";
-    }
+    $github_org = "containerd" if ($package eq "containerd");
+    $github_org = "opencontainers" if ($package =~ /runc|umoci/);
+    $github_org = "docker" if ($package =~ /buildx|cli|compose|docker/);
+    $github_org = "moby" if ($package eq "moby");
+    $github_org = "k3s-io" if ($package eq "k3s");
 
     # Support these cases for GITHUB_REPO: [<GITHUB_ORG>]#BRANCH
     # 1. As GITHUB_ORG#TAG: SUSE#suse-v4.9.5, your_gh_user#test-patch, etc

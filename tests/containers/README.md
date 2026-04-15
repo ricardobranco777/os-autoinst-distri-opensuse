@@ -10,6 +10,7 @@ In addition to the [BATS](bats/) tests we currently have tests for:
 | [docker-cli](docker_cli.pm) | https://github.com/docker/cli/tree/master/e2e |
 | [docker-compose](docker_compose.pm) | https://github.com/docker/compose/tree/main/pkg/e2e |
 | [docker-py](python_docker.pm) | https://github.com/docker/docker-py/tree/main/tests |
+| [k3s](k3s.pm) | https://github.com/k3s-io/k3s/tree/main/tests/integration |
 | [moby](docker_engine.pm) | https://github.com/moby/moby/tree/master/integration |
 | [podman-py](python_docker.pm) | https://github.com/containers/podman-py/tree/main/podman/tests |
 | [podman](podman_e2e.pm) | https://github.com/containers/podman/tree/main/test/e2e |
