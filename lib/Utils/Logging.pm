@@ -182,6 +182,8 @@ sub cleanup_known_coredumps {
     for my $pid (split(/\n/, script_output(q(coredumpctl -q --no-pager --no-legend | awk '$9 == "present" { print $5 }'), proceed_on_failure => 1))) {
         my $coredump_info = script_output("time coredumpctl info --no-pager $pid", proceed_on_failure => 1);
         my ($cmdline) = $coredump_info =~ /^\s+Command Line: (.*)$/m;
+        record_info('info', "+++" . $coredump_info . "+++");
+        record_info('cmdline', "+++" . $cmdline . "+++");
         for my $known (keys %known_coredumps) {
             if (index($cmdline, $known_coredumps{$known}) >= 0) {
                 record_info('Known dump', $coredump_info);
