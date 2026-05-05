@@ -1,0 +1,46 @@
+From 1a24b5f1c5f820b054415d51a40405f51442561e Mon Sep 17 00:00:00 2001
+From: Kir Kolyshkin <kolyshkin@gmail.com>
+Date: Mon, 4 May 2026 15:59:47 -0700
+Subject: [PATCH] tests/int: fix flake in "resources.unified override"
+
+As runc binary grows in size over time (new features, more
+dependencies) some tests start to flake because of low memory limits.
+
+One such test is "runc run (cgroup v2 resources.unified override)";
+it obviously fails because of 1M memory limit:
+
+> runc run failed: unable to start container process: container init was OOM-killed (memory limit too low?)
+
+Increase the limit 2x.
+
+Fixes issue 5264.
+
+Reported-by: Kevin Berry <kpberry11@gmail.com>
+Reported-by: Ricardo Branco <rbranco@suse.de>
+Signed-off-by: Kir Kolyshkin <kolyshkin@gmail.com>
+---
+ tests/integration/cgroups.bats | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tests/integration/cgroups.bats b/tests/integration/cgroups.bats
+index 6d829fd19f6..42ab55a4396 100644
+--- a/tests/integration/cgroups.bats
++++ b/tests/integration/cgroups.bats
+@@ -428,7 +428,7 @@ convert_hugetlb_size() {
+ 			}
+ 			| .linux.resources.unified |= {
+ 				"memory.min": "131072",
+-				"memory.max": "10485760",
++				"memory.max": "20971520",
+ 				"pids.max": "42",
+ 				"cpu.max": "5000 50000",
+ 				"cpu.weight": "42"
+@@ -443,7 +443,7 @@ convert_hugetlb_size() {
+ 
+ 	runc exec test_cgroups_unified cat /sys/fs/cgroup/memory.max
+ 	[ "$status" -eq 0 ]
+-	[ "$output" = '10485760' ]
++	[ "$output" = '20971520' ]
+ 
+ 	runc exec test_cgroups_unified cat /sys/fs/cgroup/pids.max
+ 	[ "$status" -eq 0 ]
