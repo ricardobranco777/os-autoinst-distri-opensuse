@@ -42,6 +42,7 @@ sub init {
           . '"galleryEndpointUrl": "https://gallery.azure.com/", ' . $/
           . '"managementEndpointUrl": "https://management.core.windows.net/" ' . $/
           . '}');
+    assert_script_run("export AZURE_COLOR=false");
     script_run("PILOT_DEBUG=1 az %silent --help") if is_sle(">=16");
 
     $self->az_login();
