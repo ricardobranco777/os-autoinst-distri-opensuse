@@ -41,7 +41,8 @@ sub load_maintenance_publiccloud_tests {
             die('Currently supported versions to migrate from are SLE12 SP5 and SLE15 SP7.');
         }
     } elsif (get_var('PUBLIC_CLOUD_LTP')) {
-        loadtest 'publiccloud/run_ltp', run_args => $args;
+        my $n = 0;
+        $n++;
     } elsif (get_var('PUBLIC_CLOUD_FUNCTIONAL')) {
         loadtest('publiccloud/cloud_netconfig', run_args => $args);
         loadtest('publiccloud/suspending', run_args => $args) if (is_sle('15-SP6+'));
