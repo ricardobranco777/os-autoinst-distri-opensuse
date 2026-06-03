@@ -30,13 +30,18 @@ sub run {
     my ($self) = @_;
 
     select_serial_terminal;
-
     if (is_sle_micro) {
         script_retry('curl -k https://ca.suse.de/certificates/ca/SUSE_Trust_Root.crt -o /etc/pki/trust/anchors/SUSE_Trust_Root.crt', timeout => 100, delay => 30, retry => 5);
         script_retry('pgrep update-ca-certificates', retry => 5, delay => 2, die => 0);
         assert_script_run 'update-ca-certificates -v';
     }
 
+    #my $repo = 'https://download.suse.de/ibs/home:/rfrohl:/branches:/SUSE:/SLE-15-SP4:/Update:/Products:/Micro53:/Update/standard/home:rfrohl:branches:SUSE:SLE-15-SP4:Update:Products:Micro53:Update.repo';
+    #trup_call("--continue zypper -n ar $repo");
+    #trup_call('--continue run zypper --gpg-auto-import-keys refresh');
+    my $pkg = "https://download.suse.de/ibs/home:/rfrohl:/branches:/SUSE:/SLE-15-SP4:/Update:/Products:/Micro53:/Update/standard/noarch/container-selinux-2.236.0-150400.2.3.1.noarch.rpm";
+    assert_script_run "mkdir -p /var/adm/update-scripts/";
+    trup_call "--continue run rpm -ivh --force $pkg";
     update_system;
 
     # Clean the journal to avoid capturing bugs that are fixed after installing updates
