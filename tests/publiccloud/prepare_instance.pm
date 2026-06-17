@@ -44,7 +44,6 @@ sub run {
     my $instance = $args->{my_instance};
     # check needed when not-executed in create_instance
     $instance->wait_for_ssh(scan_ssh_host_key => 1) if ($instance_args{check_connectivity} == 0);
-    $instance->check_system_boottime();
     $instance->wait_for_guestregister() if (is_ondemand);
 
     $instance->network_speed_test();
