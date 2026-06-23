@@ -465,6 +465,10 @@ EOF
 
     script_run "mkdir -pm 700 /etc/cdi";
 
+    run_command "sed -i.bak s/Build48.1/Build45.1/ /etc/zypp/repos.d/*.repo";
+    run_command "zypper -n install --oldpackage kernel-default=6.12.0-160099.43.2", timeout => 300;
+    run_command "zypper -n remove -y kernel-default-6.12.0-160099.44.2";
+
     foreach my $pkg (split(/\s+/, get_var("TEST_PACKAGES", ""))) {
         run_command "zypper --gpg-auto-import-keys --no-gpg-checks -n install --force-resolution --allow-vendor-change $pkg || rpm -ivh --force --nodeps $pkg";
     }
