@@ -32,10 +32,8 @@ our @EXPORT = qw(
   bats_tests
   cleanup_docker
   cleanup_podman
-  cleanup_rootless_docker
   configure_containerd_mirror
   configure_docker
-  configure_rootless_docker
   configure_podman_mirror
   enable_docker
   go_arch
@@ -200,33 +198,6 @@ sub configure_docker {
     record_info "WARNINGS client", $warnings if $warnings;
 }
 
-sub configure_rootless_docker {
-    run_command "modprobe br_netfilter || true";
-    run_command "systemctl stop docker || true";
-
-    switch_to_user;
-
-    run_command 'install -D -m 0600 <(echo {}) $HOME/.config/docker/daemon.json';
-    # Docker v29 increased minimum API version from 1.24 to 1.44 which broke some tests and stuff like
-    # docker-compose & container_diff and also some tests.  Docker v29.3 lowered it from 1.44 to 1.40.
-    my $docker_min_api_version = get_var("DOCKER_MIN_API_VERSION", "1.24");
-    run_command qq(echo '{"min-api-version": "$docker_min_api_version"}' > \$HOME/.config/docker/daemon.json);
-    run_command qq(DAEMON_JSON=\$(jq '.+{"registry-mirrors": ["http://$registry"]}' \$HOME/.config/docker/daemon.json));
-    run_command q(tee $HOME/.config/docker/daemon.json <<< "$DAEMON_JSON");
-
-    # https://docs.docker.com/engine/security/rootless/
-    run_command "dockerd-rootless-setuptool.sh install";
-    run_command "systemctl --user enable --now docker";
-    run_command "export DOCKER_HOST=unix:///run/user/\$(id -u)/docker.sock";
-    record_info "docker status", script_output("systemctl status --user docker", proceed_on_failure => 1);
-    record_info "rootless", script_output("docker info -f json | jq -Mr");
-    my $warnings = script_output("docker info -f '{{ range .Warnings }}{{ println . }}{{ end }}'");
-    record_info "WARNINGS daemon", $warnings if $warnings;
-    $warnings = script_output("docker info -f '{{ range .ClientInfo.Warnings }}{{ println . }}{{ end }}'");
-    record_info "WARNINGS client", $warnings if $warnings;
-    run_command 'export PATH=$PATH:/usr/sbin:/sbin';
-}
-
 sub enable_docker {
     # Needed to avoid:
     # WARNING: COMMAND_FAILED: '/sbin/iptables -t nat -F DOCKER' failed: iptables: No chain/target/match by that name.
@@ -298,12 +269,6 @@ sub cleanup_docker {
     script_run "docker system prune -a -f", timeout => $timeout;
     script_run "unset DOCKER_CERT_PATH DOCKER_HOST DOCKER_TLS_VERIFY";
     systemctl "restart docker";
-}
-
-sub cleanup_rootless_docker {
-    select_user_serial_terminal;
-    script_run "dockerd-rootless-setuptool.sh uninstall";
-    script_run "rootlesskit rm -rf ~/.local/share/docker";
 }
 
 sub cleanup_podman {

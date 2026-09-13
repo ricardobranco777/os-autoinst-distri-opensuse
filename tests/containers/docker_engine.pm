@@ -43,14 +43,9 @@ sub setup {
     configure_podman_mirror;
     run_command "ln -s /var/tmp/docker-frozen-images /";
 
-    configure_rootless_docker if get_var("ROOTLESS");
-
     install_gotestsum;
 
     patch_sources "moby", $version, "integration";
-
-    # "unprivilegeduser" is hard-coded in the tests
-    run_command qq(find -name '*.go' -exec sed -i 's/"unprivilegeduser"/"$testapi::username"/g' {} +) if get_var("ROOTLESS");
 
     # Build test helpers
     run_command "cp -f vendor.mod go.mod || true";
@@ -97,7 +92,6 @@ sub run {
         DOCKER_INTEGRATION_DAEMON_DEST => $docker_dest,
         DOCKER_FIREWALL_BACKEND => $firewall_backend,
         DOCKER_TEST_NO_FIREWALLD => $test_no_firewalld,
-        DOCKER_ROOTLESS => get_var("ROOTLESS", ""),
         TZ => "UTC",
     );
 
@@ -114,10 +108,6 @@ sub run {
     push @xfails, (
         "github.com/moby/moby/v2/integration/image::TestAPIImageHistoryCrossPlatform",
     ) if (is_sle("<16"));
-    # This may fail on SLES 15 due to older version of rootlesskit (1.1.1)
-    push @xfails, (
-        "github.com/moby/moby/v2/integration/container::TestNetworkLoopbackNat",
-    ) if (is_sle("<16") && get_var("ROOTLESS"));
     # These fail because Linux 7.2 deprecated AF_ALG sockets and
     # https://bugzilla.opensuse.org/show_bug.cgi?id=1278193 - SELinux CIL files are not shipped in Docker
     push @xfails, (
@@ -141,7 +131,6 @@ sub run {
 }
 
 sub cleanup {
-    cleanup_rootless_docker if get_var("ROOTLESS");
     select_serial_terminal;
     script_run "rm -f /usr/local/bin/{ctr,docker,ping}";
     cleanup_docker;
