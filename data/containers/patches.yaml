@@ -101,8 +101,6 @@ moby:
     min: "29.2.0"
   51972:
     min: "29.2.0"
-  52199:
-    min: "29.2.0"
 
 netavark:
   # https://github.com/containers/netavark/pull/1191 is needed for 001-basic
