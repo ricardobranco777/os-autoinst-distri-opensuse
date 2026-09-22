@@ -10,7 +10,7 @@
 use Mojo::Base 'containers::basetest';
 use testapi;
 use serial_terminal qw(select_serial_terminal select_user_serial_terminal);
-use containers::common qw(install_packages);
+use package_utils;
 use utils;
 use Utils::Architectures qw(is_s390x);
 use Utils::Backends qw(is_hyperv);
@@ -49,7 +49,7 @@ sub run {
         my $base = check_var("CONTAINERS_DOCKER_FLAVOUR", "stable") ? "docker-stable" : "docker";
         push @packages, "$base-rootless-extras";
     }
-    install_packages(@packages);
+    install_package("@packages", trup_reboot => 1);
 
     my @ip_versions = (4);
     push @ip_versions, 6 unless (is_hyperv || is_s390x || is_vmware);

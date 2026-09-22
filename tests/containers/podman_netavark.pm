@@ -11,7 +11,7 @@ use Mojo::Base 'containers::basetest';
 use testapi;
 use serial_terminal qw(select_serial_terminal);
 use version_utils qw(package_version_cmp is_transactional is_jeos is_leap is_sle_micro is_leap_micro is_sle is_microos is_public_cloud is_vmware);
-use containers::common qw(install_packages);
+use package_utils;
 use Utils::Systemd qw(systemctl);
 use main_common qw(is_updates_tests);
 use publiccloud::utils qw(is_gce);
@@ -100,7 +100,7 @@ sub _cleanup {
 }
 
 sub switch_to_netavark {
-    install_packages('netavark', 'aardvark-dns');
+    install_package('netavark aardvark-dns', trup_reboot => 1);
     # change network backend to *netavark*
     assert_script_run(q(echo -e '[Network]\nnetwork_backend="netavark"' >> /etc/containers/containers.conf));
     # reset the storage back to the initial state
@@ -117,7 +117,7 @@ sub run {
         switch_to_netavark;
     } else {
         record_info('default', 'netavark should be the default network backend');
-        install_packages('aardvark-dns');
+        install_package('aardvark-dns', trup_reboot => 1);
     }
 
     $podman->cleanup_system_host();

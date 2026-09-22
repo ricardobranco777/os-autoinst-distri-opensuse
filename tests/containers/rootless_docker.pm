@@ -23,6 +23,7 @@ use containers::docker;
 use containers::container_images;
 use Utils::Architectures;
 use containers::common qw(install_docker_when_needed);
+use package_utils;
 
 sub run {
     my ($self) = @_;
@@ -34,7 +35,7 @@ sub run {
     my $docker = containers::docker->new();
 
     my $pkg_name = check_var("CONTAINERS_DOCKER_FLAVOUR", "stable") ? "docker-stable" : "docker";
-    install_packages("$pkg_name-rootless-extras");
+    install_package("$pkg_name-rootless-extras", trup_reboot => 1);
 
     my $image = get_var("CONTAINER_IMAGE_TO_TEST", "registry.opensuse.org/opensuse/tumbleweed:latest");
 

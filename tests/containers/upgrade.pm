@@ -14,7 +14,7 @@ use utils;
 use version_utils;
 use power_action_utils 'power_action';
 use containers::bats;
-use containers::common;
+use package_utils;
 
 my $port = 8080;
 
@@ -125,7 +125,7 @@ sub run {
             push @packages, qw(podman) if (grep { $_ eq "podman" } @runtimes);
         }
         push @packages, "docker-compose" unless is_sle("<16");
-        install_packages(@packages);
+        install_package("@packages", trup_reboot => 1);
         install_docker_compose if is_sle("<16");
 
         for my $rootless (0, 1) {

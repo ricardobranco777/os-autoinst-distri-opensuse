@@ -13,7 +13,7 @@ use serial_terminal 'select_serial_terminal';
 use utils qw(script_retry zypper_call);
 use version_utils qw(is_transactional is_vmware is_opensuse);
 use transactional;
-use containers::common qw(install_packages);
+use package_utils;
 
 # Set a variable for test working directory
 my $workdir = '/tmp/test';
@@ -29,9 +29,9 @@ sub run {
     # Set a variable for my local image
     my $local_image = 'containers-storage:bci-busybox:latest';
 
-    # install_packages accounts for SLE-Micro environment with transactional-update
+    # install_package accounts for SLE-Micro environment with transactional-update
     record_info('Installing packages', 'Install required packages');
-    install_packages(@packages);
+    install_package("@packages", trup_reboot => 1);
 
     record_info('skopeo version', script_output("skopeo --version"));
 

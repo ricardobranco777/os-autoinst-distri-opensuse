@@ -13,7 +13,7 @@ use testapi;
 use serial_terminal qw(select_serial_terminal select_user_serial_terminal);
 use Utils::Systemd qw(systemctl);
 use utils;
-use containers::common;
+use package_utils;
 
 my $src_image = "registry.opensuse.org/opensuse/tumbleweed";
 my $quadlet_container = <<_EOF_;
@@ -64,7 +64,7 @@ sub run {
     my ($self) = @_;
     select_serial_terminal;
 
-    install_packages('podmansh policycoreutils-python-utils sudo');
+    install_package('podmansh policycoreutils-python-utils sudo', trup_reboot => 1);
     $podman = $self->containers_factory('podman');
 
     # make sure rootless user account exists

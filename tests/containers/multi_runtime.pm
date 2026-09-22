@@ -12,7 +12,7 @@ use Mojo::Base 'containers::basetest';
 use testapi;
 use serial_terminal qw(select_serial_terminal select_user_serial_terminal);
 use utils;
-use containers::common qw(install_packages);
+use package_utils;
 use Utils::Logging 'save_and_upload_log';
 use containers::bats qw(bats_post_hook);
 
@@ -90,7 +90,7 @@ sub run {
     select_serial_terminal;
 
     my @pkgs = ("docker", "podman", "jq");
-    install_packages(@pkgs);
+    install_package("@pkgs", trup_reboot => 1);
 
     # https://docs.docker.com/engine/daemon/ipv6/
     assert_script_run "sed -i 's%^{%&\"ipv6\":true,\"fixed-cidr-v6\":\"2001:db8:1::/64\",%' /etc/docker/daemon.json";

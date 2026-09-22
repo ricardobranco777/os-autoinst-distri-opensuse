@@ -22,7 +22,7 @@ use testapi;
 use serial_terminal qw(select_serial_terminal select_user_serial_terminal);
 use registration;
 use utils;
-use containers::common;
+use package_utils;
 use version_utils qw(is_sle_micro is_transactional is_vmware);
 
 sub basic_test {
@@ -84,7 +84,7 @@ sub run {
     # Note: When `CONTAINER_RUNTIMES=podman,docker` we don't care and it allows
     # us to test how both runtimes behave when installed together.
     push @pkgs, 'podman-docker' if check_var("CONTAINER_RUNTIMES", "podman");
-    install_packages(@pkgs);
+    install_package("@pkgs", trup_reboot => 1);
 
     basic_test($runtime, 0);
 

@@ -11,7 +11,7 @@ use Mojo::Base 'containers::basetest';
 use testapi;
 use serial_terminal qw(select_serial_terminal);
 use version_utils qw(package_version_cmp is_transactional is_jeos is_leap is_sle_micro is_leap_micro is_sle is_microos is_public_cloud);
-use containers::common qw(install_packages);
+use package_utils;
 use publiccloud::utils 'is_gce';
 use utils 'script_retry';
 
@@ -40,7 +40,7 @@ sub run {
 
     select_serial_terminal;
     my $podman = $self->containers_factory('podman');
-    install_packages('bind-utils');
+    install_package('bind-utils', trup_reboot => 1);
 
     # Test host IPv6 connectivity
     script_retry('curl -sSf6 -o /dev/null https://opensuse.org', delay => 25, retry => 4);

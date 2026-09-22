@@ -14,7 +14,6 @@ use power_action_utils 'power_action';
 use version_utils;
 use version;
 use utils;
-use containers::common qw(install_packages);
 use containers::bats;
 
 my $oci_runtime;
