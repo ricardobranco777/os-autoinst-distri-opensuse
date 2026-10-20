@@ -382,6 +382,11 @@ sub patch_junit {
     }
 }
 
+sub nonewprivs {
+    run_command "zypper -n install --force-resolution --allow-vendor-change enable-no_new_privs";
+    run_command "systemctl enable --now polkit-agent-helper.socket";
+}
+
 sub setup_pkgs {
     my ($self, @pkgs) = @_;
 
@@ -448,6 +453,8 @@ EOF
     return if $rebooted;
 
     script_run "mkdir -pm 700 /etc/cdi";
+
+    nonewprivs if get_var("NONEWPRIVS");
 
     foreach my $pkg (split(/\s+/, get_var("TEST_PACKAGES", ""))) {
         run_command "zypper --gpg-auto-import-keys --no-gpg-checks -n install --force-resolution --allow-vendor-change $pkg || rpm -ivh --force --nodeps $pkg";
