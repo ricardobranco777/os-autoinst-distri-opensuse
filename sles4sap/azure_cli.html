@@ -222,7 +222,7 @@
 
 <pre><code>my $ret = az_group_name_get();</code></pre>
 
-<p>Get the name of all existing Resource Group in the current subscription. By default the output is an array of strings. Output is always an hash with `data` and `err` keys: `data` is the decode_json of the stdout. The internal data structure can change accordingly to what is provided via <b>query</b> `err` is the stderr string, key is always present but it could have empty value.</p>
+<p>Get the name of all existing Resource Group in the current subscription. The output is a reference to an array of strings. For example: output =&gt; [&quot;ip2t123&quot;, &quot;ip2t456&quot;];</p>
 
 <dl>
 
@@ -236,7 +236,7 @@
 
 <pre><code>az_group_delete( name =&gt; &#39;openqa-rg&#39; );</code></pre>
 
-<p>Delete a resource group with a specific name</p>
+<p>Delete a resource group with a specific name. Returns structure passed by <code>az()</code>. Failure is handled by the caller.</p>
 
 <dl>
 
@@ -244,7 +244,7 @@
 <dd>
 
 </dd>
-<dt id="timeout---timeout-default-60"><b>timeout</b> - timeout, default 60</dt>
+<dt id="timeout---timeout-default-inherited-by-az"><b>timeout</b> - timeout, default inherited by az()</dt>
 <dd>
 
 </dd>
@@ -1170,7 +1170,7 @@
 <dd>
 
 </dd>
-<dt id="timeout---timeout-default-601"><b>timeout</b> - timeout, default 60</dt>
+<dt id="timeout---timeout-default-60"><b>timeout</b> - timeout, default 60</dt>
 <dd>
 
 </dd>
