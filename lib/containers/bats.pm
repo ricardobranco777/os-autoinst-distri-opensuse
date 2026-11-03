@@ -215,7 +215,7 @@ sub configure_rootless_docker {
     run_command q(tee $HOME/.config/docker/daemon.json <<< "$DAEMON_JSON");
 
     # https://docs.docker.com/engine/security/rootless/
-    run_command "dockerd-rootless-setuptool.sh install";
+    run_command "dockerd-rootless-setuptool.sh install", timeout => 180;
     run_command "systemctl --user enable --now docker";
     run_command "export DOCKER_HOST=unix:///run/user/\$(id -u)/docker.sock";
     record_info "docker status", script_output("systemctl status --user docker", proceed_on_failure => 1);
