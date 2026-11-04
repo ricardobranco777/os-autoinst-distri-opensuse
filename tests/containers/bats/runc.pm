@@ -15,6 +15,23 @@ use version;
 use Utils::Architectures;
 use containers::bats;
 
+# Replace the packaged runc with the latest upstream release binary
+sub install_upstream_runc {
+    my %arch_map = (
+        aarch64 => "arm64",
+        ppc64le => "ppc64le",
+        s390x => "s390x",
+        x86_64 => "amd64",
+    );
+    my $arch = get_var("ARCH");
+    my $runc_arch = $arch_map{$arch} or die "Unsupported architecture for upstream runc: $arch";
+    my $url = "https://github.com/opencontainers/runc/releases/latest/download/runc.$runc_arch";
+
+    run_command "curl -fsSL --retry 9 --retry-delay 100 --retry-max-time 900 -o /usr/bin/runc $url", timeout => 960;
+    run_command "chmod 755 /usr/bin/runc";
+    record_info("upstream runc", script_output("runc --version"));
+}
+
 sub run_tests {
     my %params = @_;
     my $rootless = $params{rootless};
@@ -61,6 +78,8 @@ sub run {
     push @pkgs, "criu" if is_tumbleweed;
 
     $self->setup_pkgs(@pkgs);
+
+    install_upstream_runc() if get_var("TEST_UPSTREAM");
 
     record_info("runc package info", script_output("rpm -qi runc"));
     record_info("runc go version", script_output("go version -m \$(command -v runc)"));
