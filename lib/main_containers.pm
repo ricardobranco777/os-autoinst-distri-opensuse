@@ -370,6 +370,18 @@ sub _load_container_tests {
         return;
     }
 
+    if (get_var("TEST_REPOS", "")) {
+        if (script_run("zypper lr | grep -q SUSE_CA")) {
+            assert_script_run "zypper addrepo --refresh http://download.opensuse.org/repositories/SUSE:/CA/openSUSE_Tumbleweed/SUSE:CA.repo";
+        }
+        if (script_run("rpm -q ca-certificates-suse")) {
+            assert_script_run "zypper --gpg-auto-import-keys -n install ca-certificates-suse";
+        }
+        foreach my $repo (split(/\s+/, get_var("TEST_REPOS", ""))) {
+            assert_script_run "zypper addrepo --refresh $repo || true";
+        }
+    }
+
     if (is_container_image_test() && !(is_jeos || is_sle_micro || is_microos || is_leap_micro) && $runtime !~ /k8s|openshift/) {
         # Container Image tests common
         loadtest 'containers/host_configuration';
