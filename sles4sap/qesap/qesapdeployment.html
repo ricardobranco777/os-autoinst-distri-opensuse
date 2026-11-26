@@ -32,8 +32,8 @@
           <li><a href="#check_bsc1258357">_check_bsc1258357</a></li>
           <li><a href="#qesap_py">_qesap_py</a></li>
           <li><a href="#qesap_pip">_qesap_pip</a></li>
-          <li><a href="#qesap_pip_install">qesap_pip_install</a></li>
-          <li><a href="#qesap_galaxy_install">qesap_galaxy_install</a></li>
+          <li><a href="#qesap_pip_install">_qesap_pip_install</a></li>
+          <li><a href="#qesap_galaxy_install">_qesap_galaxy_install</a></li>
           <li><a href="#qesap_upload_logs">qesap_upload_logs</a></li>
           <li><a href="#qesap_get_latest_version">qesap_get_latest_version</a></li>
           <li><a href="#qesap_get_deployment_code">_qesap_get_deployment_code</a></li>
@@ -115,7 +115,7 @@ Dies if the value is neither a numeric release version nor &#39;latest&#39;.
 It always returns exactly one value.
 
 Test modules should call this once in run() and pass the result as the
-optional qesap_version argument to the library functions, so that the version
+optional qesap_release argument to the library functions, so that the version
 (and &#39;latest&#39;) is resolved only once per module.</code></pre>
 
 <h3 id="qesap_deployment_dir">_qesap_deployment_dir</h3>
@@ -207,12 +207,16 @@ Example:
 <dd>
 
 </dd>
+<dt id="QESAP_RELEASE---optional-resolved-qe-sap-deployment-release-e.g.-2.6.15-or-undef-to-skip-the-cache-lookup-entirely.-Forwarded-to-_qesap_get_file_paths-.-When-omitted-QESAP_INSTALL_VERSION-is-read-and-latest-is-resolved-through-GitHub"><b>QESAP_RELEASE</b> - optional resolved qe-sap-deployment release (e.g. 2.6.15), or undef to skip the cache lookup entirely. Forwarded to _qesap_get_file_paths(). When omitted, QESAP_INSTALL_VERSION is read and &#39;latest&#39; is resolved through GitHub.</dt>
+<dd>
+
+</dd>
 </dl>
 
 <h3 id="qesap_venv_cmd_exec">_qesap_venv_cmd_exec</h3>
 
 <pre><code>Run a command within the Python virtualenv
-created by qesap_pip_install.
+created by _qesap_pip_install.
 
 This function never dies: it always returns an error to the caller.
 Timeout error is 124 (the one reported by timeout command line utility).</code></pre>
@@ -239,6 +243,10 @@ Timeout error is 124 (the one reported by timeout command line utility).</code><
 <dd>
 
 </dd>
+<dt id="VENV---optional-path-to-the-Python-virtualenv-to-activate.-Defaults-to-QESAPDEPLOY_VENV"><b>VENV</b> - optional path to the Python virtualenv to activate. Defaults to <code>QESAPDEPLOY_VENV</code>.</dt>
+<dd>
+
+</dd>
 </dl>
 
 <h3 id="check_bsc1258357">_check_bsc1258357</h3>
@@ -253,7 +261,7 @@ Timeout error is 124 (the one reported by timeout command line utility).</code><
 
 <pre><code>Return string of the pip to use</code></pre>
 
-<h3 id="qesap_pip_install">qesap_pip_install</h3>
+<h3 id="qesap_pip_install">_qesap_pip_install</h3>
 
 <pre><code>Install all Python requirements of the qe-sap-deployment
 in a dedicated virtual environment.
@@ -266,9 +274,17 @@ if something internally fails.</code></pre>
 <dd>
 
 </dd>
+<dt id="VENV---optional-path-for-the-Python-virtualenv.-Defaults-to-QESAPDEPLOY_VENV"><b>VENV</b> - optional path for the Python virtualenv. Defaults to <code>QESAPDEPLOY_VENV</code>.</dt>
+<dd>
+
+</dd>
+<dt id="DEPLOYMENT_DIR---optional-override-for-the-deployment-directory-forwarded-to-_qesap_get_paths"><b>DEPLOYMENT_DIR</b> - optional override for the deployment directory, forwarded to _qesap_get_paths().</dt>
+<dd>
+
+</dd>
 </dl>
 
-<h3 id="qesap_galaxy_install">qesap_galaxy_install</h3>
+<h3 id="qesap_galaxy_install">_qesap_galaxy_install</h3>
 
 <pre><code>Install all Ansible requirements of the qe-sap-deployment.
 This function has no return code but it is expected to die
@@ -322,7 +338,9 @@ and returns the parsed version string.</code></pre>
 
 <pre><code>Bakes a list of qe-sap-deployment release versions into the local disk cache
 under QESAP_CACHE_ROOT, so that downstream jobs can reuse them without
-re-downloading. Each version is stored under QESAP_CACHE_ROOT/&lt;ver&gt;/qe-sap-deployment.
+re-downloading. For each version, bakes:
+- the code tarball under &lt;cache&gt;/&lt;ver&gt;/qe-sap-deployment
+- a Python virtualenv with pip requirements under &lt;cache&gt;/&lt;ver&gt;/exec_venv
 
 Only explicit numeric release versions are supported; &#39;latest&#39; is rejected.
 
@@ -332,7 +350,7 @@ Only explicit numeric release versions are supported; &#39;latest&#39; is reject
 
 =back
 
-Dies if any version is not a numeric release version, or on any download failure.</code></pre>
+Dies if any version is not a numeric release version, or on any download/install failure.</code></pre>
 
 <h3 id="qesap_get_roles_code-Get-the-Ansible-roles-code-from-github.com-sap-linuxlab-community.sles-for-sap">qesap_get_roles_code Get the Ansible roles code from github.com/sap-linuxlab/community.sles-for-sap</h3>
 
@@ -491,6 +509,10 @@ Returns 1 if any of the strings are found in the log file, 0 otherwise.</code></
 <dl>
 
 <dt id="PROVIDER---Cloud-provider-name-using-same-format-of-PUBLIC_CLOUD_PROVIDER-setting"><b>PROVIDER</b> - Cloud provider name using same format of PUBLIC_CLOUD_PROVIDER setting</dt>
+<dd>
+
+</dd>
+<dt id="QESAP_RELEASE---optional-resolved-qe-sap-deployment-release-e.g.-2.6.15-or-undef-to-skip-the-cache-lookup-entirely.-Forwarded-to-qesap_get_terraform_dir-.-When-omitted-QESAP_INSTALL_VERSION-is-read-and-latest-is-resolved-through-GitHub"><b>QESAP_RELEASE</b> - optional resolved qe-sap-deployment release (e.g. 2.6.15), or undef to skip the cache lookup entirely. Forwarded to qesap_get_terraform_dir(). When omitted, QESAP_INSTALL_VERSION is read and &#39;latest&#39; is resolved through GitHub.</dt>
 <dd>
 
 </dd>
